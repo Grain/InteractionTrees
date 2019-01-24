@@ -8,7 +8,7 @@ Parameter state : Set.
 Parameter done : state -> bool.
 Parameter E : Type -> Type.
 
-Parameter ss : state -> state +  {i:Type & ((E i) * (i -> state))%type}.
+Parameter ss : state -> state + {i:Type & ((E i) * (i -> state))%type}.
 
 CoFixpoint big (s:state) : itree E state :=
   if done s then Ret s else
@@ -35,9 +35,35 @@ Fixpoint big_trace_approx (n:nat) (s:state) (t:trace E) (os:option state) : Prop
                  /\ forall (x:i), t = ((Event e x)::t') /\ (big_trace_approx m (k x) t' os))
 end.
 
+Lemma done_big : forall s, done s = true -> big s = Ret s.
+Proof.
+  intros. rewrite (itree_eta (big s)).
+  destruct (observe (big s)) eqn:?;
+           unfold big in Heqi; cbn in Heqi; rewrite H in Heqi; inversion Heqi; auto.
+Qed.
+
+Lemma test : forall s t os, big_trace s t os -> is_trace (big s) t os.
+Proof.
+  intros. induction H.
+  - rewrite (done_big _ H). constructor.
+  -
+Admitted.
+
 (* Should this be <-> ? *)
 Lemma semantics_coincide : forall s n t os, big_trace_approx n s t os -> is_trace (big s) t os.
 Proof.
+  intros. induction n; induction t; red in H; subst.
+  - constructor.
+  - specialize (IHt eq_refl). inversion IHt; subst.
+    +
+      destruct a. eapply TraceVis.
+  - destruct H as [|[|]].
+    + decompose [and] H. subst.
+      rewrite (itree_eta (big s)). destruct (observe (big s)) eqn:?; auto.
+      * constructor 2.
 
-Admitted.  
- 
+
+admit.
+    + decompose [ex and] H. clear H. admit.
+    + decompose [ex and] H. clear H.
+Admitted.
