@@ -4,6 +4,8 @@ From ITree Require Import
 
 From Paco Require Import paco.
 
+Require Import ProofIrrelevance.
+
 Require Import List.
 Import ListNotations.
 Open Scope list_scope.
@@ -124,7 +126,7 @@ Proof.
   -
 Admitted.
 
-Lemma is_trace_unalltaus: forall E R (t t' : itree E R) l r n,
+Lemma is_trace_unalltaus: forall {E R} (t t' : itree E R) l r n,
     is_trace t l r ->
     unalltaus n t t' ->
     is_trace t' l r.
@@ -136,7 +138,7 @@ Proof.
   - inversion H0; subst; clear H0. constructor. auto.
 Qed.
 
-Lemma is_trace_unalltaus': forall E R (t t' : itree E R) l r n,
+Lemma is_trace_unalltaus': forall {E R} (t t' : itree E R) l r n,
     is_trace t' l r ->
     unalltaus n t t' ->
     is_trace t l r.
@@ -144,30 +146,103 @@ Proof.
   intros. induction H0; try constructor; auto.
 Qed.
 
-Lemma eutt_traces: forall E R (t1 t2 : itree E R),
+Lemma euttF_tau_one {E R} r (t1 t2 : itree E R) :
+  (euttF r (Tau t1) t2) ->
+  euttF r t1 t2.
+Proof.
+  intros. destruct H. econstructor.
+  - rewrite <- finite_taus_tau. eauto.
+  - intros. eapply EQV; apply unalltaus_tau; eauto.
+Qed.
+
+Lemma eutt_is_trace : forall {E R} (t1 t2 : itree E R) t r,
+    t1 ~~ t2 -> is_trace t1 t r -> is_trace t2 t r.
+Proof.
+  intros. generalize dependent t2.
+  induction H0; intros.
+  + constructor.
+  + assert (FINt2: finite_taus t2).
+    { apply (finite_taus_eutt _ _ H). apply notau_finite_taus; auto. }
+    destruct FINt2. destruct H0.
+
+    assert (unalltaus 0 ((Ret r) : itree E0 R) (Ret r)) by auto.
+    pinversion H. specialize (EQV _ x (Ret r) x0 H1 H0). inversion EQV. subst.
+
+    eapply is_trace_unalltaus'.
+    apply TraceRet. eapply H0.
+  + apply IHis_trace.
+    eapply Transitive_eutt. apply Symmetric_eutt. eapply eutt_tau1. assumption.
+  + assert (FINt2: finite_taus t2).
+    { apply (finite_taus_eutt _ _ H). apply notau_finite_taus; auto. }
+    destruct FINt2. destruct H1.
+
+    assert (unalltaus 0 (Vis e k) (Vis e k)) by auto.
+    pinversion H. pose proof (EQV _ x0 (Vis e k) x1 H2 H1) as EQV'. inversion EQV'. clear EQV'.
+
+    apply inj_pair2 in H5. apply inj_pair2 in H6. subst.
+
+    remember (Vis _ _) in H1.
+    induction H1; subst; constructor.
+    * specialize (H7 x). inversion H7; auto. inversion H1.
+    * apply IHuntaus; auto. constructor.
+        - rewrite finite_taus_tau in FIN. auto.
+        - intros. eapply EQV; apply unalltaus_tau; eauto.
+        - rewrite finite_taus_tau in FIN. auto.
+        - intros. eapply EQV; apply unalltaus_tau; eauto.
+Qed.
+
+Lemma is_trace_tau_iff: forall {E R} (t1 t2 : itree E R) t r,
+    (is_trace (Tau t1) t r <-> is_trace t2 t r) ->
+    (is_trace t1 t r <-> is_trace t2 t r).
+Proof.
+  intros. split; intros.
+  - rewrite <- H. apply TraceTau. assumption.
+  - rewrite <- H in H0. remember (Tau t1) as t1'.
+    induction H0; try constructor; try inversion Heqt1'; subst; auto.
+Qed.
+
+Lemma traces_equiv_finite_taus : forall {E R} (t1 t2 : itree E R),
+    (forall t r, is_trace t1 t r <-> is_trace t2 t r) ->
+    finite_taus t1 -> finite_taus t2.
+Proof.
+  intros. red in H0. decompose [ex] H0; clear H0. induction H2; subst.
+  - rewrite (itree_eta t) in *. destruct (observe t).
+    + assert (is_trace (Ret r : itree E0 R) [] (Some r)) by constructor.
+      rewrite H in H0.
+
+      remember (Some r) as r'.
+      induction H0; inversion Heqr'; subst.
+      * apply finite_taus_ret.
+      * rewrite finite_taus_tau. apply IHis_trace; auto. intros.
+        symmetry. apply is_trace_tau_iff. symmetry in H. apply H.
+      * apply finite_taus_vis.
+    + inversion PROP.
+    + (* assert (is_trace (Vis e k) [] None) by constructor. *)
+      (* rewrite H in H0. *) admit.
+  - apply IHuntaus. intros. apply is_trace_tau_iff. auto.
+Admitted.
+
+Lemma eutt_traces: forall {E R} (t1 t2 : itree E R),
     eutt t1 t2 <->
     (forall t r, is_trace t1 t r <-> is_trace t2 t r).
 Proof.
   intros. split; intros.
   { split; intros.
-    - induction H0.
-      + constructor.
-      + assert (t2 = Ret r) by admit. subst. constructor.
-      + apply IHis_trace. admit.
-      + assert (t2 = Vis e k) by admit. subst. constructor. assumption.
-    - admit.
+    - apply (eutt_is_trace _ _ _ _ H H0).
+    - apply Symmetric_eutt in H. apply (eutt_is_trace _ _ _ _ H H0).
   }
   { pcofix IH. pfold. constructor; intros.
     - split; intros.
-      + red in H0. decompose [ex] H0; clear H0. admit.
-      + (* same *) admit.
+      + eapply traces_equiv_finite_taus; eauto.
+      + symmetry in H. eapply traces_equiv_finite_taus; eauto.
     - assert (forall t r, is_trace t1' t r <-> is_trace t2' t r).
       { intros. split; intros.
-        - pose proof (is_trace_unalltaus' _ _ _ _ _ _ _ H0 UNTAUS1).
+        - pose proof (is_trace_unalltaus' _ _ _ _ _ H0 UNTAUS1).
           rewrite H in H1. eapply is_trace_unalltaus; eauto.
-        - pose proof (is_trace_unalltaus' _ _ _ _ _ _ _ H0 UNTAUS2).
+        - pose proof (is_trace_unalltaus' _ _ _ _ _ H0 UNTAUS2).
           rewrite <- H in H1. eapply is_trace_unalltaus; eauto.
       }
-      (* rewrite (itree_eta t1'). rewrite (itree_eta t2') in *. destruct (observe t1') in *; destruct (observe t2'). *)
+
+      rewrite (itree_eta t1'). rewrite (itree_eta t2') in *. destruct (observe t1') in *; destruct (observe t2').
       admit.
 Admitted.
