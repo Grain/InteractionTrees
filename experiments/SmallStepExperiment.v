@@ -201,6 +201,17 @@ Proof.
     induction H0; try constructor; try inversion Heqt1'; subst; auto.
 Qed.
 
+Lemma uninhab_k_eutt: forall {E R} (X : Type) (e : E X) (k1 k2 : X -> itree E R),
+    (~ inhabited X) ->
+    (Vis e k1) ~~ (Vis e k2).
+Proof.
+  intros. pcofix CIH.
+  pfold. constructor.
+  - split; intro; apply finite_taus_vis.
+  - intros. inversion UNTAUS1. inversion UNTAUS2. subst.
+    constructor. intro. exfalso. apply H. apply exists_inhabited with (P:=fun x => True). exists x. auto.
+Qed.
+
 Lemma traces_equiv_finite_taus : forall {E R} (t1 t2 : itree E R),
     (forall t r, is_trace t1 t r <-> is_trace t2 t r) ->
     finite_taus t1 -> finite_taus t2.
@@ -208,41 +219,105 @@ Proof.
   intros. red in H0. decompose [ex] H0; clear H0. induction H2; subst.
   - rewrite (itree_eta t) in *. destruct (observe t).
     + assert (is_trace (Ret r : itree E0 R) [] (Some r)) by constructor.
-      rewrite H in H0.
-
-      remember (Some r) as r'.
+      rewrite H in H0. remember (Some r) as r'.
       induction H0; inversion Heqr'; subst.
       * apply finite_taus_ret.
       * rewrite finite_taus_tau. apply IHis_trace; auto. intros.
-        symmetry. apply is_trace_tau_iff. symmetry in H. apply H.
+        symmetry. apply is_trace_tau_iff. symmetry. apply H.
       * apply finite_taus_vis.
     + inversion PROP.
-    + (* assert (is_trace (Vis e k) [] None) by constructor. *)
-      (* rewrite H in H0. *) admit.
+    + assert (inhabited u \/ ~inhabited u) by admit. destruct H0.
+      {
+        inversion H0.
+        assert (is_trace (Vis e k) [Event e X] None) by repeat constructor.
+        rewrite H in H1. remember [Event e X] as l.
+        induction H1; inversion Heql; subst.
+        - apply finite_taus_tau. apply IHis_trace; auto. intros.
+          symmetry. apply is_trace_tau_iff. symmetry. apply H.
+        - apply finite_taus_vis.
+      }
+      {
+        assert (is_trace (Vis e k) [] None) by constructor.
+        rewrite H in H1. admit.
+      }
+      (* assert (is_trace (Vis e k) [] None) by constructor. *)
+      (* rewrite H in H0. *)
   - apply IHuntaus. intros. apply is_trace_tau_iff. auto.
 Admitted.
 
 Lemma eutt_traces: forall {E R} (t1 t2 : itree E R),
-    eutt t1 t2 <->
+    eutt t1 t2 ->
     (forall t r, is_trace t1 t r <-> is_trace t2 t r).
 Proof.
   intros. split; intros.
-  { split; intros.
-    - apply (eutt_is_trace _ _ _ _ H H0).
-    - apply Symmetric_eutt in H. apply (eutt_is_trace _ _ _ _ H H0).
-  }
-  { pcofix IH. pfold. constructor; intros.
-    - split; intros.
-      + eapply traces_equiv_finite_taus; eauto.
-      + symmetry in H. eapply traces_equiv_finite_taus; eauto.
-    - assert (forall t r, is_trace t1' t r <-> is_trace t2' t r).
-      { intros. split; intros.
-        - pose proof (is_trace_unalltaus' _ _ _ _ _ H0 UNTAUS1).
-          rewrite H in H1. eapply is_trace_unalltaus; eauto.
-        - pose proof (is_trace_unalltaus' _ _ _ _ _ H0 UNTAUS2).
-          rewrite <- H in H1. eapply is_trace_unalltaus; eauto.
-      }
+  - apply (eutt_is_trace _ _ _ _ H H0).
+  - apply Symmetric_eutt in H. apply (eutt_is_trace _ _ _ _ H H0).
+Qed.
 
-      rewrite (itree_eta t1'). rewrite (itree_eta t2') in *. destruct (observe t1') in *; destruct (observe t2').
-      admit.
-Admitted.
+(* TODO clean up this counterexample *)
+Lemma is_trace_but_not_eutt : forall {E R} (X : Type) (e : E X) (k : X -> itree E R),
+    (~inhabited X) ->
+    (forall t r, is_trace ITree.spin t r <-> is_trace (Vis e k) t r)
+.
+Proof.
+  intros. split; intro.
+  - remember ITree.spin as tree. induction H0.
+    + constructor.
+    + unfold ITree.spin in Heqtree. rewrite itree_eta in Heqtree. inversion Heqtree.
+    + apply IHis_trace. rewrite itree_eta in Heqtree. inversion Heqtree. reflexivity.
+    + unfold ITree.spin in Heqtree. rewrite itree_eta in Heqtree. inversion Heqtree.
+  - remember (Vis e k) as tree. induction H0; try inversion Heqtree; subst.
+    + constructor.
+    + exfalso. apply H. apply exists_inhabited with (P:=fun _ => True). exists x. auto.
+Qed.
+
+(* Lemma is_trace_and_eutt : forall {E R} (X : Type) (e : E X) (k : X -> itree E R), *)
+(*     (inhabited X) -> *)
+(*     (forall t r, is_trace ITree.spin t r <-> is_trace (Vis e k) t r) *)
+(* . *)
+(* Proof. *)
+(*   intros. split; intro. *)
+(*   - remember ITree.spin as tree. induction H0. *)
+(*     + constructor. *)
+(*     + unfold ITree.spin in Heqtree. rewrite itree_eta in Heqtree. inversion Heqtree. *)
+(*     + apply IHis_trace. rewrite itree_eta in Heqtree. inversion Heqtree. reflexivity. *)
+(*     + unfold ITree.spin in Heqtree. rewrite itree_eta in Heqtree. inversion Heqtree. *)
+(*   - remember (Vis e k) as tree. induction H0; try inversion Heqtree; subst. *)
+(*     + constructor. *)
+(*     + exfalso. apply H. apply exists_inhabited with (P:=fun _ => True). exists x. auto. *)
+(* Qed. *)
+
+Lemma traces_eutt_false: ~ forall {E R} (t1 t2 : itree E R),
+                           (forall t r, is_trace t1 t r <-> is_trace t2 t r) -> eutt t1 t2.
+Proof.
+  intro.
+  Inductive Void : Type := .
+  Inductive E' : Type -> Type := | E'1 : forall x : Type, E' x.
+  specialize (H E' nat (Vis (E'1 Void) (fun _ => Ret 0)) (Vis (E'1 Void) (fun _ => Ret 1))).
+  assert ((Vis (E'1 Void) (fun _ => Ret 0)) ~~ (Vis (E'1 Void) (fun _ => Ret 1)) -> False). {
+    intro.
+    assert (unalltaus 0 (Vis (E'1 Void) (fun _ => Ret 0)) (Vis (E'1 Void) (fun _ => Ret 0))) by auto.
+    assert (unalltaus 0 (Vis (E'1 Void) (fun _ => Ret 1)) (Vis (E'1 Void) (fun _ => Ret 1))) by auto.
+    pinversion H0.
+    specialize (EQV 0 0 (Vis (E'1 Void) (fun _ => Ret 0)) (Vis (E'1 Void) (fun _ => Ret 1)) H1 H2).
+    inversion EQV.
+    apply inj_pair2 in H5. apply inj_pair2 in H6.
+    apply inj_pair2 in H7. apply inj_pair2 in H8. subst.
+  }
+  apply H0. apply H. intro.
+Qed.
+(*   { pcofix IH. pfold. constructor; intros. *)
+(*     - split; intros. *)
+(*       + eapply traces_equiv_finite_taus; eauto. *)
+(*       + symmetry in H. eapply traces_equiv_finite_taus; eauto. *)
+(*     - assert (forall t r, is_trace t1' t r <-> is_trace t2' t r). *)
+(*       { intros. split; intros. *)
+(*         - pose proof (is_trace_unalltaus' _ _ _ _ _ H0 UNTAUS1). *)
+(*           rewrite H in H1. eapply is_trace_unalltaus; eauto. *)
+(*         - pose proof (is_trace_unalltaus' _ _ _ _ _ H0 UNTAUS2). *)
+(*           rewrite <- H in H1. eapply is_trace_unalltaus; eauto. *)
+(*       } *)
+
+(*       rewrite (itree_eta t1'). rewrite (itree_eta t2') in *. destruct (observe t1') in *; destruct (observe t2'). *)
+(*       admit. *)
+(* Admitted. *)
