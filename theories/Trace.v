@@ -5,9 +5,12 @@ From ITree Require Import
      Core.
 
 Inductive event (E : Type -> Type) : Type :=
-| Event : forall X, E X -> X -> event E.
+| Event : forall X, E X -> X -> event E
+| OutputEvent : forall X, E X -> event E
+.
 
 Arguments Event {E X}.
+Arguments OutputEvent {E X}.
 
 Definition trace (E : Type -> Type) : Type := list (event E).
 
@@ -21,6 +24,9 @@ Inductive is_trace {E : Type -> Type} {R : Type} :
 | TraceVis : forall X (e : E X) (x : X) k tr r_,
   is_trace (k x) tr r_ ->
   is_trace (Vis e k) (Event e x :: tr) r_
+| TraceUninhab : forall X (e : E X) k,
+    ~ inhabited X ->
+    is_trace (Vis e k) [OutputEvent e] None
 .
 
 Definition trace_incl {E : Type -> Type} {R : Type} :
@@ -29,7 +35,7 @@ Definition trace_incl {E : Type -> Type} {R : Type} :
     forall tr r_, is_trace t1 tr r_ -> is_trace t2 tr r_.
 
 (* [step_ ev t' t] if [t] steps to [t'] (read right to left!)
-   with visible event [ev]. *) 
+   with visible event [ev]. *)
 Inductive step_ {E : Type -> Type} {R : Type}
           (ev : event E) (t' : itree E R) :
   itree E R -> Prop :=
@@ -59,6 +65,7 @@ Abort.
 
 (* Set-of-traces monad *)
 Definition traces (E : Type -> Type) (R : Type) : Type :=
+  (* todo well-formedness of trace *)
   trace E -> option R -> Prop.
 
 Definition bind_traces {E : Type -> Type} {R S : Type}
