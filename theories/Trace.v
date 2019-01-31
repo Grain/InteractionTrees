@@ -25,8 +25,8 @@ Inductive is_trace {E : Type -> Type} {R : Type} :
   is_trace (k x) tr r_ ->
   is_trace (Vis e k) (Event e x :: tr) r_
 | TraceUninhab : forall X (e : E X) k,
-    ~ inhabited X ->
-    is_trace (Vis e k) [OutputEvent e] None
+  (* ~ inhabited X -> *)
+  is_trace (Vis e k) [OutputEvent e] None
 .
 
 Definition trace_incl {E : Type -> Type} {R : Type} :

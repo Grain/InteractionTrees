@@ -5,7 +5,6 @@ From ITree Require Import
 From Paco Require Import paco.
 
 Require Import ProofIrrelevance.
-Require Import Classical_Prop.
 
 Require Import List.
 Import ListNotations.
@@ -142,7 +141,7 @@ Proof.
   - rewrite (itree_eta t') in *. destruct (observe t'); inversion H0; subst; constructor.
   - eapply IHis_trace. apply (unalltaus_tau _ _ _ H0).
   - inversion H0; subst; clear H0. constructor. auto.
-  - inversion H0; subst; clear H0. constructor. auto.
+  - inversion H0; subst; clear H0. constructor.
 Qed.
 
 Lemma is_trace_unalltaus': forall {E R} (t t' : itree E R) l r n,
@@ -206,13 +205,13 @@ Proof.
         - rewrite finite_taus_tau in FIN. auto.
         - intros. eapply EQV; apply unalltaus_tau; eauto.
   + assert (FINt2: finite_taus t2).
-    { apply (finite_taus_eutt _ _ H0). apply notau_finite_taus; auto. }
-    destruct FINt2. destruct H1.
+    { apply (finite_taus_eutt _ _ H). apply notau_finite_taus; auto. }
+    destruct FINt2. destruct H0.
 
     assert (unalltaus 0 (Vis e k) (Vis e k)) by auto.
-    pinversion H0. pose proof (EQV _ x (Vis e k) x0 H2 H1) as EQV'. inversion EQV'. clear EQV'.
+    pinversion H. pose proof (EQV _ x (Vis e k) x0 H1 H0) as EQV'. inversion EQV'. clear EQV'.
     invert_existTs; subst.
-    remember (Vis _ _) in H1. induction H1; subst; constructor; auto.
+    remember (Vis _ _) in H0. induction H0; subst; constructor; auto.
     apply IHuntaus; auto.
         - apply euttF_tau_one'. auto.
         - rewrite finite_taus_tau in FIN. auto.
@@ -254,27 +253,30 @@ Proof.
         symmetry. apply is_trace_tau_iff. symmetry. apply H.
       * apply finite_taus_vis.
     + inversion PROP.
-    + destruct (classic (inhabited u)).
-      {
-        inversion H0.
-        assert (is_trace (Vis e k) [Event e X] None) by repeat constructor.
-        rewrite H in H1. remember [Event e X] as l.
-        induction H1; inversion Heql; subst.
-        - apply finite_taus_tau. apply IHis_trace; auto. intros.
-          symmetry. apply is_trace_tau_iff. symmetry. apply H.
-        - apply finite_taus_vis.
-      }
-      {
-        assert (is_trace (Vis e k) [OutputEvent e] None) by (constructor; auto).
-        rewrite H in H1.
-
-        remember [OutputEvent e] as l in H1. induction H1; try solve [inversion Heql]; subst.
-        - rewrite finite_taus_tau. apply IHis_trace; auto. intros.
-          symmetry. apply is_trace_tau_iff. symmetry. apply H.
-        - apply finite_taus_vis.
-      }
-      (* assert (is_trace (Vis e k) [] None) by constructor. *)
-      (* rewrite H in H0. *)
+    + assert (is_trace (Vis e k) [OutputEvent e] None) by constructor.
+      rewrite H in H0.
+      remember [OutputEvent e] as l in H0. induction H0; try solve [inversion Heql]; subst.
+      * rewrite finite_taus_tau. apply IHis_trace; auto. intros.
+        symmetry. apply is_trace_tau_iff. symmetry. apply H.
+      * apply finite_taus_vis.
+(* destruct (classic (inhabited u)). *)
+(*       { *)
+(*         inversion H0. *)
+(*         assert (is_trace (Vis e k) [Event e X] None) by repeat constructor. *)
+(*         rewrite H in H1. remember [Event e X] as l. *)
+(*         induction H1; inversion Heql; subst. *)
+(*         - apply finite_taus_tau. apply IHis_trace; auto. intros. *)
+(*           symmetry. apply is_trace_tau_iff. symmetry. apply H. *)
+(*         - apply finite_taus_vis. *)
+(*       } *)
+(*       { *)
+(*         assert (is_trace (Vis e k) [OutputEvent e] None) by constructor. *)
+(*         rewrite H in H1. *)
+(*         remember [OutputEvent e] as l in H1. induction H1; try solve [inversion Heql]; subst. *)
+(*         - rewrite finite_taus_tau. apply IHis_trace; auto. intros. *)
+(*           symmetry. apply is_trace_tau_iff. symmetry. apply H. *)
+(*         - apply finite_taus_vis. *)
+(*       } *)
   - apply IHuntaus. intros. apply is_trace_tau_iff. auto.
 Qed.
 
@@ -319,21 +321,31 @@ Proof.
       rewrite Hiff' in H. inversion H.
     + assert (is_trace (Ret r0 : itree E R) [] (Some r0)) by constructor.
       rewrite <- Hiff' in H. inversion H.
-    + destruct (classic (inhabited u)).
-      * destruct H. assert (is_trace (Vis e k) [Event e X] None) by (repeat constructor).
-        rewrite Hiff' in H. inversion H; subst. invert_existTs; subst.
-        constructor.
-        intros. right. apply CIH. intros. split; intros.
-        { assert (is_trace (Vis e k) ((Event e x) :: t) r0) by (constructor; auto).
-          rewrite Hiff' in H1. inversion H1; auto. invert_existTs; subst; auto.
-        }
-        { assert (is_trace (Vis e k0) ((Event e x) :: t) r0) by (constructor; auto).
-          rewrite <- Hiff' in H1. inversion H1; auto. invert_existTs; subst; auto.
-        }
-      * assert (is_trace (Vis e k) [OutputEvent e] None) by (constructor; auto).
-        rewrite Hiff' in H0. inversion H0; subst. invert_existTs; subst.
-        constructor. intros. exfalso. apply H.
-        apply exists_inhabited with (P:=fun x => True). exists x. auto.
+    + (* destruct (classic (inhabited u)). *)
+      (* * destruct H. assert (is_trace (Vis e k) [Event e X] None) by (repeat constructor). *)
+      (*   rewrite Hiff' in H. inversion H; subst. invert_existTs; subst. *)
+      (*   constructor. *)
+      (*   intros. right. apply CIH. intros. split; intros. *)
+      (*   { assert (is_trace (Vis e k) ((Event e x) :: t) r0) by (constructor; auto). *)
+      (*     rewrite Hiff' in H1. inversion H1; auto. invert_existTs; subst; auto. *)
+      (*   } *)
+      (*   { assert (is_trace (Vis e k0) ((Event e x) :: t) r0) by (constructor; auto). *)
+      (*     rewrite <- Hiff' in H1. inversion H1; auto. invert_existTs; subst; auto. *)
+      (*   } *)
+      (* *  *)
+      assert (is_trace (Vis e k) [OutputEvent e] None) by (constructor; auto).
+      rewrite Hiff' in H. inversion H; subst. invert_existTs; subst.
+      constructor. intros.
+      right. apply CIH. intros. split; intros.
+      { assert (is_trace (Vis e k) ((Event e x) :: t) r0) by (constructor; auto).
+        rewrite Hiff' in H1. inversion H1; auto. invert_existTs; subst; auto.
+      }
+      { assert (is_trace (Vis e k0) ((Event e x) :: t) r0) by (constructor; auto).
+        rewrite <- Hiff' in H1. inversion H1; auto. invert_existTs; subst; auto.
+      }
+
+      (* exfalso. apply H. *)
+      (* apply exists_inhabited with (P:=fun x => True). exists x. auto. *)
 Qed.
 
 Lemma final: forall {E R} (t1 t2 : itree E R),
@@ -364,3 +376,29 @@ Proof.
     + exfalso. apply H. apply exists_inhabited with (P:=fun _ => True). exists x. auto.
     + invert_existTs; subst.
 Abort.
+
+Lemma is_trace_prefix: forall {E R} (t : itree E R) tr1 tr2 r,
+    is_trace t (tr1 ++ tr2) r ->
+    exists r', is_trace t tr1 r'.
+Proof.
+  intros. remember (tr1 ++ tr2) as tr. revert tr1 tr2 Heqtr. induction H; intros.
+  - destruct tr1.
+    + exists None. constructor.
+    + inversion Heqtr.
+  - destruct tr1.
+    + exists None. constructor.
+    + inversion Heqtr.
+  - destruct (IHis_trace _ _ Heqtr). eexists. constructor. eassumption.
+  - destruct tr1.
+    + exists None. constructor.
+    + inversion Heqtr. destruct e0; inversion H1. subst. invert_existTs. subst.
+      destruct (IHis_trace _ _ eq_refl).
+      eexists. constructor. eauto.
+  - exists None. destruct tr1.
+    + constructor.
+    + inversion Heqtr. destruct e0; inversion H0.
+      subst. invert_existTs. subst.
+      destruct tr1.
+      * constructor.
+      * inversion H1.
+Qed.
