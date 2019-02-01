@@ -131,6 +131,40 @@ Proof.
 Qed.
 Hint Resolve monotone_euttF0.
 
+
+
+
+Inductive inclF (incl : relation (itree E R)) (t1 t2: itree E R) : Prop :=
+| inclF_ (FIN: finite_taus t1 -> finite_taus t2)
+         (EQV: forall n m t1' t2'
+                 (UNTAUS1: unalltaus n t1 t1')
+                 (UNTAUS2: unalltaus m t2 t2'),
+             euttF0 incl t1' t2')
+.
+
+Lemma monotone_inclF : monotone2 inclF.
+Proof.
+  intro. intros. inversion IN. constructor; auto. intros.
+  specialize (EQV _ _ _ _ UNTAUS1 UNTAUS2). destruct EQV; constructor.
+  intros. apply LE. auto.
+Qed.
+Hint Resolve monotone_inclF : paco.
+
+Definition incl : relation (itree E R) := paco2 inclF bot2.
+Global Arguments incl t1%itree t2%itree.
+
+Lemma test : forall (t1 t2 : itree E R),
+    ITree.spin = t1 ->
+    incl t1 t2.
+Proof.
+  pcofix CIH. intros. pfold. constructor.
+  - intros. destruct H. admit.
+  - intros. remember ITree.spin as spin. induction UNTAUS1; subst.
+    + inversion PROP.
+    + apply IHUNTAUS1; auto. rewrite (itree_eta ITree.spin) in H0. cbn in H0. inversion H0. auto.
+Admitted.
+
+
 (* [eutt_] is monotone. *)
 Lemma monotone_euttF : monotone2 euttF.
 Proof.

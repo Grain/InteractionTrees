@@ -29,10 +29,30 @@ Inductive is_trace {E : Type -> Type} {R : Type} :
   is_trace (Vis e k) [OutputEvent e] None
 .
 
+(* t1 ⊑ t2 *)
 Definition trace_incl {E : Type -> Type} {R : Type} :
   itree E R -> itree E R -> Prop :=
   fun t1 t2 =>
     forall tr r_, is_trace t1 tr r_ -> is_trace t2 tr r_.
+
+From ITree Require Import
+     StdEffects
+     OpenSum.
+
+(* Lemma trace_incl_or : forall {E R} `{nondetE -< E} (t1 t2 : itree E R), *)
+(*   trace_incl t1 (or t1 t2). *)
+(* Proof. *)
+(*   red. intros. unfold or. unfold vis. induction tr. *)
+(*   - inversion H0; subst; try constructor. *)
+(*     admit. admit. *)
+(*   - destruct a. *)
+(*     + apply TraceVis. *)
+
+(* remember tr. remember t1. remember r_. unfold vis. *)
+(*   induction H0; intros; subst. *)
+(*   - constructor. *)
+(*   - constructor. *)
+(* Qed. *)
 
 (* [step_ ev t' t] if [t] steps to [t'] (read right to left!)
    with visible event [ev]. *)
