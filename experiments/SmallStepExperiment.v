@@ -10,121 +10,121 @@ Require Import List.
 Import ListNotations.
 Open Scope list_scope.
 
-Parameter state : Set.
-Parameter done : state -> bool.
-Parameter E : Type -> Type.
+(* Parameter state : Set. *)
+(* Parameter done : state -> bool. *)
+(* Parameter E : Type -> Type. *)
 
-Parameter ss : state -> state + {i:Type & ((E i) * (i -> state))%type}.
+(* Parameter ss : state -> state + {i:Type & ((E i) * (i -> state))%type}. *)
 
-CoFixpoint big (s:state) : itree E state :=
-  if done s then Ret s else
-    match ss s with
-    | inl s' => Tau (big s')
-    | inr (existT _ i (e, k)) =>
-      Vis e (fun x => big (k x))
-    end.
+(* CoFixpoint big (s:state) : itree E state := *)
+(*   if done s then Ret s else *)
+(*     match ss s with *)
+(*     | inl s' => Tau (big s') *)
+(*     | inr (existT _ i (e, k)) => *)
+(*       Vis e (fun x => big (k x)) *)
+(*     end. *)
 
-(* This doesn't work if the semantics loops because there can a nontrivial trace but these derivations can't find them *)
-Inductive big_trace : state -> (trace E) -> option state -> Prop :=
-| bt_done : forall s, done s = true -> big_trace s [] (Some s)
-| bt_early : forall s, done s = false -> big_trace s [] None
-| bt_tau  : forall s s' t r, done s = false -> ss s = inl s' -> big_trace s' t r -> big_trace s t r
-| bt_vis  : forall s i e k t r,
-    done s = false ->
-    ss s = inr (existT _ i (e, k)) ->
-    forall (x:i), big_trace (k x) t r -> big_trace s ((Event e x)::t) r.
+(* (* This doesn't work if the semantics loops because there can a nontrivial trace but these derivations can't find them *) *)
+(* Inductive big_trace : state -> (trace E) -> option state -> Prop := *)
+(* | bt_done : forall s, done s = true -> big_trace s [] (Some s) *)
+(* | bt_early : forall s, done s = false -> big_trace s [] None *)
+(* | bt_tau  : forall s s' t r, done s = false -> ss s = inl s' -> big_trace s' t r -> big_trace s t r *)
+(* | bt_vis  : forall s i e k t r, *)
+(*     done s = false -> *)
+(*     ss s = inr (existT _ i (e, k)) -> *)
+(*     forall (x:i), big_trace (k x) t r -> big_trace s ((Event e x)::t) r. *)
 
-Fixpoint big_trace_approx (n:nat) (s:state) (t:trace E) (os:option state) : Prop :=
-  match n with
-  | 0 =>
-    (done s = false /\ os = None /\ t = []) \/
-    (done s = true /\ os = Some s /\ t = [])
-  | S m =>
-    (done s = true /\ os = Some s /\ t = []) \/
-    (done s = false /\ exists s', ss s = inl s' /\ big_trace_approx m s' t os) \/
-    (done s = false /\ exists i e k,
-        ss s = inr (existT _ i (e, k)) /\ ((t = [] /\ os = None) \/
-                                          (exists x t', t = (Event e x) :: t' /\
-                                                   big_trace_approx m (k x) t' os)))
-        (* match t with *)
-        (* | [] => True (* i uninhabited *) *)
-        (* | (Event e' x) :: t' => big_trace_approx m (k x) t' os *)
-        (* end) *)
-        (* forall (x:i) t', (big_trace_approx m (k x) t' os) -> t = ((Event e x)::t')) *)
-  end.
+(* Fixpoint big_trace_approx (n:nat) (s:state) (t:trace E) (os:option state) : Prop := *)
+(*   match n with *)
+(*   | 0 => *)
+(*     (done s = false /\ os = None /\ t = []) \/ *)
+(*     (done s = true /\ os = Some s /\ t = []) *)
+(*   | S m => *)
+(*     (done s = true /\ os = Some s /\ t = []) \/ *)
+(*     (done s = false /\ exists s', ss s = inl s' /\ big_trace_approx m s' t os) \/ *)
+(*     (done s = false /\ exists i e k, *)
+(*         ss s = inr (existT _ i (e, k)) /\ ((t = [] /\ os = None) \/ *)
+(*                                           (exists x t', t = (Event e x) :: t' /\ *)
+(*                                                    big_trace_approx m (k x) t' os))) *)
+(*         (* match t with *) *)
+(*         (* | [] => True (* i uninhabited *) *) *)
+(*         (* | (Event e' x) :: t' => big_trace_approx m (k x) t' os *) *)
+(*         (* end) *) *)
+(*         (* forall (x:i) t', (big_trace_approx m (k x) t' os) -> t = ((Event e x)::t')) *) *)
+(*   end. *)
 
-Lemma relate : forall s t os, big_trace s t os -> exists n, big_trace_approx n s t os.
-Admitted.
-Lemma relate' : forall n s t os, big_trace_approx n s t os -> big_trace s t os.
-Admitted.
+(* Lemma relate : forall s t os, big_trace s t os -> exists n, big_trace_approx n s t os. *)
+(* Admitted. *)
+(* Lemma relate' : forall n s t os, big_trace_approx n s t os -> big_trace s t os. *)
+(* Admitted. *)
 
-(* something like (eutt t1 t2) <-> (forall t os, is_trace t1 t os <-> is_trace t2 t os) *)
+(* (* something like (eutt t1 t2) <-> (forall t os, is_trace t1 t os <-> is_trace t2 t os) *) *)
 
-Lemma done_big : forall s, done s = true -> big s = Ret s.
-Proof.
-  intros. rewrite (itree_eta (big s)).
-  destruct (observe (big s)) eqn:Hs;
-           unfold big in Hs; cbn in Hs; rewrite H in Hs; inversion Hs; auto.
-Qed.
+(* Lemma done_big : forall s, done s = true -> big s = Ret s. *)
+(* Proof. *)
+(*   intros. rewrite (itree_eta (big s)). *)
+(*   destruct (observe (big s)) eqn:Hs; *)
+(*            unfold big in Hs; cbn in Hs; rewrite H in Hs; inversion Hs; auto. *)
+(* Qed. *)
 
-Lemma not_done_big_inl : forall s s', done s = false -> ss s = inl s' -> big s = Tau (big s').
-Proof.
-  intros. rewrite (itree_eta (big s)).
-  destruct (observe (big s)) eqn:Hs;
-    unfold big in Hs; cbn in Hs; rewrite H in Hs; rewrite H0 in Hs; inversion Hs; auto.
-Qed.
+(* Lemma not_done_big_inl : forall s s', done s = false -> ss s = inl s' -> big s = Tau (big s'). *)
+(* Proof. *)
+(*   intros. rewrite (itree_eta (big s)). *)
+(*   destruct (observe (big s)) eqn:Hs; *)
+(*     unfold big in Hs; cbn in Hs; rewrite H in Hs; rewrite H0 in Hs; inversion Hs; auto. *)
+(* Qed. *)
 
-Lemma not_done_big_inr : forall s i e k,
-    done s = false ->
-    ss s = inr (existT _ i (e, k)) ->
-    big s = Vis e (fun x => big (k x)).
-Proof.
-  intros. rewrite (itree_eta (big s)).
-  destruct (observe (big s)) eqn:Hs;
-    unfold big in Hs; cbn in Hs; rewrite H in Hs; rewrite H0 in Hs; try solve [inversion Hs; subst; auto].
-  simpl in Hs. fold big in *. rewrite Hs. auto.
-Qed.
+(* Lemma not_done_big_inr : forall s i e k, *)
+(*     done s = false -> *)
+(*     ss s = inr (existT _ i (e, k)) -> *)
+(*     big s = Vis e (fun x => big (k x)). *)
+(* Proof. *)
+(*   intros. rewrite (itree_eta (big s)). *)
+(*   destruct (observe (big s)) eqn:Hs; *)
+(*     unfold big in Hs; cbn in Hs; rewrite H in Hs; rewrite H0 in Hs; try solve [inversion Hs; subst; auto]. *)
+(*   simpl in Hs. fold big in *. rewrite Hs. auto. *)
+(* Qed. *)
 
-Lemma test : forall s t os, big_trace s t os <-> is_trace (big s) t os.
-Proof.
-  intros. split; intros.
-  {
-    induction H.
-    - rewrite (done_big _ H). constructor.
-    - constructor.
-    - rewrite (not_done_big_inl _ _ H H0). constructor. auto.
-    - rewrite (not_done_big_inr _ _ _ _ H H0). constructor. auto.
-  }
-  {
-    remember (big s) as tree.
-    induction H.
-    -
-Admitted.
+(* Lemma test : forall s t os, big_trace s t os <-> is_trace (big s) t os. *)
+(* Proof. *)
+(*   intros. split; intros. *)
+(*   { *)
+(*     induction H. *)
+(*     - rewrite (done_big _ H). constructor. *)
+(*     - constructor. *)
+(*     - rewrite (not_done_big_inl _ _ H H0). constructor. auto. *)
+(*     - rewrite (not_done_big_inr _ _ _ _ H H0). constructor. auto. *)
+(*   } *)
+(*   { *)
+(*     remember (big s) as tree. *)
+(*     induction H. *)
+(*     - *)
+(* Admitted. *)
 
-Lemma semantics_coincide : forall s n t os, big_trace_approx n s t os -> is_trace (big s) t os.
-Proof.
-  intros s n. revert s.
-  induction n; intros.
-  - red in H. destruct H.
-    + decompose [and] H; subst. constructor.
-    + decompose [and] H; subst. rewrite (done_big _ H0). constructor.
-  - remember (S n) as n'. rewrite Heqn' in H.
-    simpl in H. decompose [or] H; clear H.
-    + decompose [and] H0; clear H0. subst. rewrite (done_big _ H). constructor.
-    + decompose [ex and] H1; clear H1. subst. rewrite (not_done_big_inl _ _ H H0).
-      constructor. auto.
-    + decompose [ex and] H1; clear H1. subst. rewrite (not_done_big_inr _ _ _ _ H H0).
-      destruct H3. subst.  destruct H1. subst. constructor.
-      decompose [ex and] H1. subst. constructor. auto.
-Qed.
+(* Lemma semantics_coincide : forall s n t os, big_trace_approx n s t os -> is_trace (big s) t os. *)
+(* Proof. *)
+(*   intros s n. revert s. *)
+(*   induction n; intros. *)
+(*   - red in H. destruct H. *)
+(*     + decompose [and] H; subst. constructor. *)
+(*     + decompose [and] H; subst. rewrite (done_big _ H0). constructor. *)
+(*   - remember (S n) as n'. rewrite Heqn' in H. *)
+(*     simpl in H. decompose [or] H; clear H. *)
+(*     + decompose [and] H0; clear H0. subst. rewrite (done_big _ H). constructor. *)
+(*     + decompose [ex and] H1; clear H1. subst. rewrite (not_done_big_inl _ _ H H0). *)
+(*       constructor. auto. *)
+(*     + decompose [ex and] H1; clear H1. subst. rewrite (not_done_big_inr _ _ _ _ H H0). *)
+(*       destruct H3. subst.  destruct H1. subst. constructor. *)
+(*       decompose [ex and] H1. subst. constructor. auto. *)
+(* Qed. *)
 
-Lemma reverse: forall s t os, is_trace (big s) t os ->
-                         exists n, big_trace_approx n s t os.
-Proof.
-  intros. remember (big s) as tree. induction H.
-  - admit.
-  -
-Admitted.
+(* Lemma reverse: forall s t os, is_trace (big s) t os -> *)
+(*                          exists n, big_trace_approx n s t os. *)
+(* Proof. *)
+(*   intros. remember (big s) as tree. induction H. *)
+(*   - admit. *)
+(*   - *)
+(* Admitted. *)
 
 Ltac invert_existTs :=
   repeat match goal with
@@ -174,13 +174,12 @@ Lemma eutt_is_trace : forall {E R} (t1 t2 : itree E R) t r,
     t1 ~~ t2 -> is_trace t1 t r -> is_trace t2 t r.
 Proof.
   intros. generalize dependent t2.
-  induction H0; intros.
-  + constructor.
+  induction H0; intros; try solve [constructor].
   + assert (FINt2: finite_taus t2).
     { apply (finite_taus_eutt _ _ H). apply notau_finite_taus; auto. }
     destruct FINt2. destruct H0.
 
-    assert (unalltaus 0 ((Ret r) : itree E0 R) (Ret r)) by auto.
+    assert (unalltaus 0 ((Ret r) : itree E R) (Ret r)) by auto.
     pinversion H. specialize (EQV _ x (Ret r) x0 H1 H0). inversion EQV. subst.
 
     eapply is_trace_unalltaus'.
@@ -245,7 +244,7 @@ Lemma traces_equiv_finite_taus : forall {E R} (t1 t2 : itree E R),
 Proof.
   intros. red in H0. decompose [ex] H0; clear H0. induction H2; subst.
   - rewrite (itree_eta t) in *. destruct (observe t).
-    + assert (is_trace (Ret r : itree E0 R) [] (Some r)) by constructor.
+    + assert (is_trace (Ret r : itree E R) [] (Some r)) by constructor.
       rewrite H in H0. remember (Some r) as r'.
       induction H0; inversion Heqr'; subst.
       * apply finite_taus_ret.

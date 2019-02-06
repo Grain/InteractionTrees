@@ -39,14 +39,32 @@ From ITree Require Import
      StdEffects
      OpenSum.
 
-(* Lemma trace_incl_or : forall {E R} `{nondetE -< E} (t1 t2 : itree E R), *)
-(*   trace_incl t1 (or t1 t2). *)
+Require Import ProofIrrelevance.
+Open Scope itree_scope.
+
+Ltac invert_existTs :=
+  repeat match goal with
+         | [ H : existT ?P ?p _ = existT ?P ?p _ |- _ ] => apply inj_pair2 in H
+         end.
+
+(* Lemma trace_incl_or : forall {E R R'} `{nondetE -< E} (t1 t2 : itree E R) (k : itree E R'), *)
+(*   trace_incl (t1 ;; k) (or t1 t2 ;; k). *)
 (* Proof. *)
-(*   red. intros. unfold or. unfold vis. induction tr. *)
-(*   - inversion H0; subst; try constructor. *)
-(*     admit. admit. *)
+(*   red. intros. unfold or in *. unfold vis in *. *)
+(*   generalize dependent t1. generalize dependent t2. induction tr; intros. *)
+(*   - admit. (* destruct r_. *) *)
+(* (*     + inversion H0. *) *)
+(* (*       * subst. rewrite (itree_eta t1) in *. *) *)
+(* (*         destruct (observe t1); auto. *) *)
+(* (*         -- *) *)
+
+(* (* remember (t1 ;; k) as t. *) *)
+(* (*     induction H0; subst; try constructor; try inversion Heqt. *) *)
+(* (*     + simpl. admit. *) *)
+(* (*     + admit. *) *)
+(* (*     + *) *)
 (*   - destruct a. *)
-(*     + apply TraceVis. *)
+(*     +  *)
 
 (* remember tr. remember t1. remember r_. unfold vis. *)
 (*   induction H0; intros; subst. *)
