@@ -2,6 +2,8 @@ Require Import ExtLib.Structures.Functor.
 Require Import ExtLib.Structures.Applicative.
 Require Import ExtLib.Structures.Monad.
 
+From ITree Require Import Basics.
+
 Set Implicit Arguments.
 Set Contextual Implicit.
 Set Primitive Projections.
@@ -13,16 +15,23 @@ Ltac hexploit x := eapply hexploit_mp; [eapply x|].
 
 Ltac inv H := inversion H; clear H; subst.
 
+Ltac rewrite_everywhere lem :=
+  progress ((repeat match goal with [H: _ |- _] => rewrite lem in H end); repeat rewrite lem).
+
+Ltac rewrite_everywhere_except lem X :=
+  progress ((repeat match goal with [H: _ |- _] =>
+                 match H with X => fail 1 | _ => rewrite lem in H end
+             end); repeat rewrite lem).
+
 Section itree.
 
   Context {E : Type -> Type} {R : Type}.
 
-  Inductive itreeF {itree : Type} :=
+  Variant itreeF (itree : Type) :=
   | RetF (r : R)
   | TauF (t : itree)
   | VisF {u} (e : E u) (k : u -> itree)
   .
-  Arguments itreeF _ : clear implicits.
 
   (** An [itree E R] is the denotation of a program as coinductive
     (possibly infinite) tree where the leaves [Ret] are labeled with
@@ -30,9 +39,7 @@ Section itree.
     branching node [Vis] with a visible effect [E X] that branches
     on the values of [X]. *)
   CoInductive itree : Type := go
-  { observe : itreeF itree }.
-
-  Axiom itree_eta : forall s, s = go (s.(observe)).
+  { _observe : itreeF itree }.
 
   (** Notes about using [itree]:
 
@@ -55,9 +62,20 @@ Section itree.
 
 End itree.
 
-Arguments itreeF _ _ : clear implicits.
 Arguments itree _ _ : clear implicits.
-Arguments itree_eta {E R} s.
+Arguments itreeF _ _ : clear implicits.
+
+Definition observe {E R} := @_observe E R.
+
+Ltac fold_observe := change @_observe with @observe in *.
+Ltac unfold_observe := unfold observe in *.
+
+Ltac genobs x ox := remember (observe x) as ox; simpl observe.
+
+Ltac simpobs := fold_observe;
+                repeat match goal with [H: _ = observe _ |- _] =>
+                    rewrite_everywhere_except (@eq_sym _ _ _ H) H
+                end.
 
 (** We introduce notation for the [Tau], [Ret], and [Vis] constructors. Using
     notation rather than definitions works better for extraction.  (The [spin]
@@ -83,15 +101,15 @@ Section bind.
   (* The [match] in the definition of bind. *)
   Definition bind_match
              (bind : itree E T -> itree E U)
-             (c : itree E T) : itree E U :=
-    match c.(observe) with
+             (oc : itreeF E T (itree E T)) : itree E U :=
+    match oc with
     | RetF r => k r
     | TauF t => Tau (bind t)
     | VisF e h => Vis e (fun x => bind (h x))
     end.
 
   CoFixpoint bind' (t : itree E T) : itree E U :=
-    bind_match bind' t.
+    bind_match bind' (observe t).
 
 End bind.
 
@@ -115,9 +133,8 @@ Definition bind {E T U}
 Definition map {E R S} (f : R -> S)  (t : itree E R) : itree E S :=
   bind t (fun x => Ret (f x)).
 
-Definition liftE {E : Type -> Type} {X : Type}
-           (e : E X) : itree E X :=
-  Vis e (fun x => Ret x).
+Definition liftE {E : Type -> Type} : E ~> itree E :=
+  fun R e => Vis e (fun x => Ret x).
 
 (** Ignore the result of a tree. *)
 Definition ignore {E R} : itree E R -> itree E unit :=
@@ -136,61 +153,6 @@ Definition forever {E R S} (t : itree E R) : itree E S :=
 Definition when {E}
            (b : bool) (body : itree E unit) : itree E unit :=
   if b then body else Ret tt.
-
-Lemma observe_bind : forall {E T U} c (k : T -> itree E U),
-    observe (bind c k) = match c.(observe) with
-                         | RetF r => (k r).(observe)
-                         | TauF t => TauF (bind t k)
-                         | VisF e h => VisF e (fun x => bind (h x) k)
-                         end.
-Proof.
-  unfold bind, bind', bind_match. unfold observe.
-  intros.
-  (* note(gmm): i wasn't able to find any way to pattern match on this goal. *)
-  change (let z := observe c in
-          observe match z with
-                  | RetF r => k r
-                  | TauF t =>
-                    Tau
-                      ((cofix bind' (t0 : itree E T) : itree E U :=
-                          match observe t0 with
-                          | RetF r => k r
-                          | TauF t1 => Tau (bind' t1)
-                          | @VisF _ _ _ u e h => Vis e (fun x : u => bind' (h x))
-                          end) t)
-                  | @VisF _ _ _ u e h =>
-                    Vis e
-                        (fun x : u =>
-                           (cofix bind' (t : itree E T) : itree E U :=
-                              match observe t with
-                              | RetF r => k r
-                              | TauF t0 => Tau (bind' t0)
-                              | @VisF _ _ _ u0 e0 h0 => Vis e0 (fun x0 : u0 => bind' (h0 x0))
-                              end) (h x))
-                  end =
-          match z with
-          | RetF r => observe (k r)
-          | TauF t =>
-            TauF
-              ((cofix bind' (t0 : itree E T) : itree E U :=
-                  match observe t0 with
-                  | RetF r => k r
-                  | TauF t1 => Tau (bind' t1)
-                  | @VisF _ _ _ u e h => Vis e (fun x : u => bind' (h x))
-                  end) t)
-          | @VisF _ _ _ u e h =>
-            VisF e
-                 (fun x : u =>
-                    (cofix bind' (t : itree E T) : itree E U :=
-                       match observe t with
-                       | RetF r => k r
-                       | TauF t0 => Tau (bind' t0)
-                       | @VisF _ _ _ u0 e0 h0 => Vis e0 (fun x0 : u0 => bind' (h0 x0))
-                       end) (h x))
-          end
-         ).
-  destruct z; try reflexivity.
-Defined.
 
 End ITree.
 
@@ -230,8 +192,5 @@ Global Instance Monad_itree {E} : Monad (itree E) :=
 ;  bind := @ITree.bind E
 |}.
 
-Lemma bind'_to_bind {E R U} : forall (t: itree E U) (k: U -> itree E R),
-    ITree.bind' k t = ITree.bind t k.
-Proof. reflexivity. Qed.
-
-Ltac fold_bind := rewrite !bind'_to_bind in *.
+Ltac fold_bind := (change @ITree.bind' with (fun E T U k t => @ITree.bind E T U t k) in *; simpl in *).
+Ltac unfold_bind := unfold ITree.bind in *.
