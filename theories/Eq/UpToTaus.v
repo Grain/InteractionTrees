@@ -790,78 +790,80 @@ Proof.
   rewrite map_map. reflexivity.
 Qed.
 
-Section INCL.
+(* Section INCL. *)
 
-Context {E : Type -> Type} {R : Type}.
+(* Context {E : Type -> Type} {R : Type}. *)
 
-Inductive inclF (incl : relation (itree E R)) (t1 t2: itree E R) : Prop :=
-| inclF_ (FIN: finite_taus t1 -> finite_taus t2)
-         (EQV: forall n m t1' t2'
-                 (UNTAUS1: unalltaus n t1 t1')
-                 (UNTAUS2: unalltaus m t2 t2'),
-             euttF0 incl t1' t2')
-.
+(* Inductive inclF (incl : relation (itree E R)) (t1 t2: itree E R) : Prop := *)
+(* | inclF_ (FIN: finite_taus t1 -> finite_taus t2) *)
+(*          (EQV: forall n m t1' t2' *)
+(*                  (UNTAUS1: unalltaus n t1 t1') *)
+(*                  (UNTAUS2: unalltaus m t2 t2'), *)
+(*              euttF0 incl t1' t2') *)
+(* . *)
 
-Lemma monotone_inclF : monotone2 inclF.
-Proof.
-  intro. intros. inversion IN. constructor; auto. intros.
-  specialize (EQV _ _ _ _ UNTAUS1 UNTAUS2). destruct EQV; constructor.
-  intros. apply LE. auto.
-Qed.
-Hint Resolve monotone_inclF : paco.
+(* Lemma monotone_inclF : monotone2 inclF. *)
+(* Proof. *)
+(*   intro. intros. inversion IN. constructor; auto. intros. *)
+(*   specialize (EQV _ _ _ _ UNTAUS1 UNTAUS2). destruct EQV; constructor. *)
+(*   intros. apply LE. auto. *)
+(* Qed. *)
+(* Hint Resolve monotone_inclF : paco. *)
 
-Definition incl : relation (itree E R) := paco2 inclF bot2.
-Global Arguments incl t1%itree t2%itree.
+(* Definition incl : relation (itree E R) := paco2 inclF bot2. *)
+(* Global Arguments incl t1%itree t2%itree. *)
 
-Lemma test : forall (t2 : itree E R),
-    incl ITree.spin t2.
-Proof.
-  pcofix CIH. intros. pfold. constructor.
-  - intros. destruct H. destruct H. subst.
-    clear CIH. remember ITree.spin as spin. induction H; subst.
-    + inversion PROP.
-    + apply IHuntaus; auto. rewrite itree_eta in Heqspin. cbn in Heqspin.
-      inversion Heqspin. auto.
-  - intros. remember ITree.spin as spin. clear CIH. induction UNTAUS1; subst.
-    + inversion PROP.
-    + rewrite (itree_eta ITree.spin) in Heqspin. cbn in Heqspin. inversion Heqspin.
-      apply IHUNTAUS1; auto.
-Qed.
+(* Lemma test : forall (t2 : itree E R), *)
+(*     incl ITree.spin t2. *)
+(* Proof. *)
+(*   pcofix CIH. intros. pfold. constructor. *)
+(*   - intros. destruct H. destruct H. subst. *)
+(*     clear CIH. remember ITree.spin as spin. induction H; subst. *)
+(*     + inversion PROP. *)
+(*     + apply IHuntaus; auto. rewrite itree_eta in Heqspin. cbn in Heqspin. *)
+(*       inversion Heqspin. auto. *)
+(*   - intros. remember ITree.spin as spin. clear CIH. induction UNTAUS1; subst. *)
+(*     + inversion PROP. *)
+(*     + rewrite (itree_eta ITree.spin) in Heqspin. cbn in Heqspin. inversion Heqspin. *)
+(*       apply IHUNTAUS1; auto. *)
+(* Qed. *)
 
-From ITree Require Import Trace.
+(* From ITree Require Import Trace. *)
 
-Lemma test' : forall (t1 t2 : itree E R),
-    ITree.spin = t1 ->
-    trace_incl t1 t2.
-Proof.
-  red. intros. induction H0; try solve [constructor];
-                 rewrite (itree_eta ITree.spin) in H; cbn in H; inversion H; auto.
-Qed.
+(* Lemma test' : forall (t1 t2 : itree E R), *)
+(*     ITree.spin = t1 -> *)
+(*     trace_incl t1 t2. *)
+(* Proof. *)
+(*   red. intros. induction H0; try solve [constructor]; *)
+(*                  rewrite (itree_eta ITree.spin) in H; cbn in H; inversion H; auto. *)
+(* Qed. *)
 
-Lemma forwards : forall (t1 t2 : itree E R),
-    incl t1 t2 ->
-    trace_incl t1 t2.
-Proof.
-  red. intros.
-  generalize dependent t2. induction H0; intros; try solve [constructor].
-  - admit.
-  - apply IHis_trace.
-    pinversion H. pfold. constructor.
-    + intros. rewrite <- finite_taus_tau in H1. apply FIN; auto.
-    + eauto.
-  - admit. (* harder looking *)
-  - admit.
-Admitted.
+(* Lemma forwards : forall (t1 t2 : itree E R), *)
+(*     incl t1 t2 -> *)
+(*     trace_incl t1 t2. *)
+(* Proof. *)
+(*   red. intros. *)
+(*   generalize dependent t2. induction H0; intros; try solve [constructor]. *)
+(*   - admit. *)
+(*   - apply IHis_trace. *)
+(*     pinversion H. pfold. constructor. *)
+(*     + intros. rewrite <- finite_taus_tau in H1. apply FIN; auto. *)
+(*     + eauto. *)
+(*   - admit. (* harder looking *) *)
+(*   - admit. *)
+(* Admitted. *)
 
-Lemma backwards : forall (t1 t2 : itree E R),
-    trace_incl t1 t2 ->
-    incl t1 t2.
-Proof.
-  pcofix CIH. intros. red in H0. pfold.
-  constructor.
-  - admit.
-  - intros. admit.
-Admitted.
+(* Lemma backwards : forall (t1 t2 : itree E R), *)
+(*     trace_incl t1 t2 -> *)
+(*     incl t1 t2. *)
+(* Proof. *)
+(*   pcofix CIH. intros. red in H0. pfold. *)
+(*   constructor. *)
+(*   - admit. *)
+(*   - intros. admit. *)
+(* Admitted. *)
+
+(* End INCL. *)
 
 Notation itree' E R := (itreeF E R (itree E R)).
 
