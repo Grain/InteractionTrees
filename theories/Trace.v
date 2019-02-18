@@ -1,6 +1,7 @@
 From Coq Require Import
      List
-     ProofIrrelevance.
+     ProofIrrelevance
+     Classes.RelationClasses.
 
 Import ListNotations.
 
@@ -67,6 +68,18 @@ Definition trace_incl {E : Type -> Type} {R : Type} :
   itree E R -> itree E R -> Prop :=
   fun t1 t2 =>
     forall tr r_, is_trace t1 tr r_ -> is_trace t2 tr r_.
+
+Global Instance Reflexive_trace_incl {E R} : Reflexive (@trace_incl E R).
+Proof.
+  do 3 red. intros. red in H.
+  remember tr as tr'. remember r_ as r'. remember (observe x).
+  induction H; intros; subst; constructor; auto.
+Qed.
+
+Global Instance Transitive_trace_incl {E R} : Transitive (@trace_incl E R).
+Proof.
+  do 2 red. intros. apply H in H1. apply H0 in H1. assumption.
+Qed.
 
 (* t1 ≡ t2 *)
 Definition trace_eq {E : Type -> Type} {R : Type} : itree E R -> itree E R -> Prop :=

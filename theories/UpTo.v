@@ -2,7 +2,7 @@
  *
  * With interaction trees, you need to maintain the effects so the output
  * that you get is an inductive interaction tree with an extra
- * `Unknown`/`OutOfFuel` constructor. This is analagous to the need to
+ * `Unknown`/`OutOfFuel` constructor. This is analogous to the need to
  * maintain the trace in a trace-based semantics.
  *)
 Require Import Coq.Classes.RelationClasses.
@@ -125,3 +125,271 @@ Section upto.
   Qed.
 
 End upto.
+
+Arguments upto {_} {_} _ _.
+
+Section traces.
+  Require Import
+          ITree.Trace
+          ITree.Eq.Eq
+          ITree.Eq.UpToTaus
+          Paco.paco
+          Coq.Lists.List
+          ProofIrrelevance.
+  Import ListNotations.
+
+  Ltac invert_existTs :=
+    repeat match goal with
+           | [ H : existT ?P ?p _ = existT ?P ?p _ |- _ ] => apply inj_pair2 in H
+           end; subst.
+
+  Variable E : Type -> Type.
+  Variable R : Type.
+
+  Definition Eff_incl (t1 t2 : itree E R) : Prop :=
+    forall n, exists m, EffLe (upto n t1) (upto m t2).
+  Definition Eff_eq (t1 t2 : itree E R) : Prop :=
+    Eff_incl t1 t2 /\ Eff_incl t2 t1.
+
+  (* Lemma test : forall (X : Type) n (e : E X) (k1 k2 : X -> itree E R), *)
+  (*     (exists m, forall x, EffLe (upto n (k1 x)) (upto m (k2 x))) -> *)
+  (*     (exists m, EffLe (Vis e (fun x => (upto n (k1 x)))) (Vis e (fun x => (upto m (k2 x))))). *)
+  (* Proof. *)
+  (*   intros. destruct H as [m ?]. exists m. *)
+  (*   constructor. assumption. *)
+  (* Qed. *)
+
+  (* Global Instance Transitive_EffLe {t} : Transitive (@EffLe t). *)
+  (* Proof. *)
+  (*   compute. induction x, y; intros; *)
+  (*              try solve [inv H; auto]; *)
+  (*              try solve [inv H0; auto]; *)
+  (*              try solve [constructor]. *)
+  (*   inv H0. inv H1. invert_existTs. constructor. intros. eapply H; eauto. *)
+  (* Qed. *)
+
+  Global Instance Reflexive_Eff_incl : Reflexive Eff_incl.
+  Proof.
+    do 2 red. intros.
+    exists n. reflexivity.
+    (* generalize dependent t. induction n; intros. *)
+    (* - exists 1. constructor. *)
+    (* - simpl. destruct (observe t) eqn:Heqt; auto. *)
+    (*   + exists 1. simpl. rewrite Heqt. constructor. *)
+    (*   + destruct (IHn t0) as [m ?]. *)
+    (*     exists (S m). simpl. rewrite Heqt; assumption. *)
+    (*   + destruct (IHn t) as [m ?]. *)
+    (*     exists (S m). simpl. rewrite Heqt. constructor. intros. *)
+    (* TODO ISSUE HERE *)
+  Qed.
+
+  Global Instance Transitive_Eff_incl : Transitive Eff_incl.
+  Proof.
+    do 2 red. intros.
+    (* etransitivity. apply H. apply H0. *)
+    destruct (H n) as [m ?].
+    destruct (H0 m) as [m' ?].
+    exists m'. etransitivity; eauto.
+  Qed.
+  (* Lemma Eff_incl_Ret : forall r (t : itree E R), *)
+  (*     Eff_incl (Core.Ret r) t -> *)
+  (*     t ≅ Core.Ret r. *)
+  (* Proof. *)
+  (*   intros. red in H. pcofix CIH. *)
+  (*   pfold. destruct (H 1). simpl in H0. inversion H0; subst. destruct *)
+  (* Qed. *)
+
+  (* todo move this into the proof, since only used once *)
+  Lemma upto_trace_ret : forall r n (t : itree E R),
+      upto n t = Ret r ->
+      is_trace t nil (Some r).
+  Proof.
+    intros. red. generalize dependent t.
+    induction n; intros; inversion H; subst.
+    destruct (observe t); inversion H1; constructor; auto.
+  Qed.
+  Lemma upto_trace_vis : forall (X : Type) (e : E X) k n (t : itree E R) (x : X),
+      upto n t = Vis e k ->
+      exists tr r, is_trace t ((Event e x) :: tr) r.
+  Proof.
+    intros.
+    (* remember (observe t). *)
+    generalize dependent t.
+    induction n; intros; inv H.
+    destruct (observe t) eqn:Heqt; inversion H1.
+    - destruct (IHn t0 H0) as [tr [r ?]].
+      exists tr, r. red. rewrite Heqt. constructor. auto.
+    - subst. invert_existTs. exists [], None.
+      red. rewrite Heqt. repeat constructor.
+  Qed.
+
+  (* Lemma test : forall X (t1 t2 : itree E R) (e : E X) (k : X -> itree E R), *)
+  (*     Eff_incl t1 t2 -> *)
+  (*     observe t1 = VisF e k -> *)
+  (*     exists k', (forall x : X, Eff_incl (k x) (k' x)) /\ observe t2 = VisF e k'. *)
+  (* Proof. *)
+  (*   intros. red in H. *)
+  (* Qed. *)
+
+  Lemma Eff_incl_vis : forall X (t1 t2 : itree E R) (e : E X) (k1 k2 : X -> itree E R),
+      Eff_incl t1 t2 ->
+      observe t1 = VisF e k1 ->
+      observe t2 = VisF e k2 ->
+      forall x, Eff_incl (k1 x) (k2 x).
+  Proof.
+    intros. intro. destruct (H (S n)) as [m H']. simpl in H'. rewrite H0 in H'.
+    destruct m; inversion H'. rewrite H1 in H6. inversion H6.
+    invert_existTs.
+    exists m. auto.
+  Qed.
+
+  Lemma Eff_incl_tau_add: forall (t1 t2 t2' : itree E R),
+      Eff_incl t1 t2 ->
+      observe t2' = TauF t2 ->
+      Eff_incl t1 t2'.
+  Proof.
+    intros. intro. destruct (H n) as [m H'].
+    exists (S m). simpl. rewrite H0. auto.
+  Qed.
+  Lemma Eff_incl_tau_remove: forall (t1 t2 t2' : itree E R),
+      Eff_incl t1 t2 ->
+      observe t2 = TauF t2' ->
+      Eff_incl t1 t2'.
+  Proof.
+    intros. intro. destruct (H n) as [m H'].
+    destruct m.
+    - simpl in H'. inversion H'. exists 0. constructor.
+    - simpl in H'. rewrite H0 in H'. exists m. auto.
+  Qed.
+
+  Lemma Eff_incl_unalltaus: forall (t1 t2 t2' : itree E R),
+      Eff_incl t1 t2 ->
+      unalltaus t2 t2' ->
+      Eff_incl t1 t2'.
+  Proof.
+    intros ? ? ? ? [? ?].
+    remember (observe t2). remember (observe t2').
+    generalize dependent t2.
+    induction H0; intros; subst.
+    - intro. destruct (H n). destruct x; simpl in H0.
+      + inversion H0. exists 0. constructor.
+      + rewrite <- Heqi in H0. exists (S x). assumption.
+    - eapply IHuntausF; auto. eapply Eff_incl_tau_remove; eauto.
+  Qed.
+
+  Lemma Eff_incl_vis1: forall X (t1 t2 : itree E R) (e : E X) (k : X -> itree E R),
+      Eff_incl t1 t2 ->
+      observe t1 = VisF e k ->
+      exists t2', unalltaus t2 t2' /\ (exists k', observe t2' = VisF e k').
+  Proof.
+    intros. destruct (H 1) as [m H'].
+    simpl in H'. rewrite H0 in H'. inversion H'. invert_existTs.
+    clear H'. generalize dependent e. generalize dependent t2.
+    induction m; intros; inversion H5. destruct (observe t2) eqn:?; inversion H3.
+    - pose proof (Eff_incl_tau_remove _ _ _ H Heqi). specialize (IHm t H1 _ H0 H3).
+      destruct IHm as [? [? ?]].
+      exists x. split; auto. rewrite <- Heqi. eapply unalltaus_tau'; eauto.
+    - subst. invert_existTs. exists (Core.Vis e0 k0). split; auto.
+      + constructor; auto. eapply notau_vis; simpl; eauto.
+      + exists k0. auto.
+  Qed.
+
+  Lemma Eff_incl_trace_incl : forall (t1 t2 : itree E R),
+      Eff_incl t1 t2 ->
+      trace_incl t1 t2.
+  Proof.
+    do 2 red. intros. red in H0. (* red in H. *)
+    remember (observe t1) as o1. (* remember tr as tr'. remember r_ as r'. *)
+    generalize dependent t1. generalize dependent t2.
+    induction H0; intros; subst; try constructor.
+    - destruct (H 1) as [m Hupto]. simpl in Hupto. rewrite <- Heqo1 in Hupto.
+      inv Hupto.
+      symmetry in H2. eapply upto_trace_ret; eauto.
+    - apply IHis_traceF with (t1:=t); auto. intro. specialize (H (S n)).
+      simpl in H. rewrite <- Heqo1 in H. auto.
+    - symmetry in Heqo1. destruct (Eff_incl_vis1 _ _ _ _ _ H Heqo1) as [? [? [? ?]]].
+      pose proof (Eff_incl_unalltaus _ _ _ H H1) as H'.
+      destruct H1.
+      remember (observe x0).
+      induction H1; intros; subst.
+      + rewrite H2. constructor. apply IHis_traceF with (t1:=(k x)); auto.
+        apply (Eff_incl_vis _ _ _ _ _ _ H' Heqo1); auto.
+      + constructor. apply IHuntausF; auto.
+    - symmetry in Heqo1. destruct (Eff_incl_vis1 _ _ _ _ _ H Heqo1) as [? [? [? ?]]].
+      pose proof (Eff_incl_unalltaus _ _ _ H H0) as H'.
+      destruct H0.
+      remember (observe x).
+      induction H0; intros; subst.
+      + rewrite H1. constructor.
+      + constructor. apply IHuntausF; auto.
+  Qed.
+
+  Lemma exists_Sm: forall (e : Eff E R) (t : itree E R),
+      (exists m, EffLe e (upto (S m) t)) ->
+      exists m, EffLe e (upto m t).
+  Proof.
+    intros. destruct H as [m ?].
+    exists (S m). assumption.
+  Qed.
+
+  Lemma trace_incl_Eff_incl : forall (t1 t2 : itree E R),
+      trace_incl t1 t2 ->
+      Eff_incl t1 t2.
+  Proof.
+    red. intros. red in H.
+    generalize dependent t1. generalize dependent t2.
+    induction n; intros.
+    - exists 0. constructor.
+    - unfold is_trace in *. simpl. destruct (observe t1) eqn:Heqt1.
+      + assert (is_traceF (RetF r : itreeF E R (itree E R)) [] (Some r)) by constructor.
+        specialize (H _ _ H0). admit.
+      + apply IHn. intros.  apply H. constructor. assumption.
+      + eexists (S _). simpl.
+        assert (is_traceF (VisF e k) [EventOut e] None) by constructor.
+        specialize (H _ _ H0). inversion H.
+        * admit.
+        * invert_existTs. constructor. intros.
+  Abort.
+
+  Lemma eutt_Eff_incl : forall (t1 t2 : itree E R),
+      t1 ≈ t2 ->
+      Eff_incl t1 t2.
+  Proof.
+    red. intros.
+    generalize dependent t1. generalize dependent t2.
+    induction n; intros.
+    - exists 1. constructor.
+    - simpl. destruct (observe t1) eqn:Heqt1.
+      + pinversion H.
+        assert (finite_taus t1) by (eapply finite_taus_ret; eauto).
+        inversion H0.
+        rewrite FIN in H0. destruct H0.
+
+        specialize (EQV _ _ H1 H0).
+        destruct H0.
+        remember (observe t2).
+        admit.
+        (* induction H0; intros; subst. *)
+        (* * exists 1. simpl. destruct (observe t2) eqn:Heqt2; inversion H2. *)
+
+      + apply IHn; auto. rewrite <- H. symmetry. apply tauF_eutt. symmetry. auto.
+      + pinversion H.
+        assert (finite_taus t1) by (eapply finite_taus_vis; eauto).
+        inversion H0.
+        rewrite FIN in H0. destruct H0 as [ot2 ?].
+        specialize (EQV _ _ H1 H0).
+        rewrite Heqt1 in H1. inversion H1. inversion H2; subst.
+        * inversion EQV. invert_existTs.
+          assert (observe t2 = VisF e k2) by admit.
+          apply exists_Sm. simpl. rewrite H4.
+          apply test.
+          assert (forall x, exists m, EffLe (upto n (k x)) (upto m (k2 x))). {
+            intros.
+            apply IHn. pclearbot. apply H8.
+          }
+
+          eexists. constructor.
+          intros. apply H4.
+
+
+End traces.
