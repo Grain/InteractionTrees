@@ -24,7 +24,8 @@ Section with_effects.
   Inductive EffLe {t} : Eff t -> Eff t -> Prop :=
   | EffLe_Any : forall b, EffLe Unknown b
   | EffLe_Ret : forall a, EffLe (Ret a) (Ret a)
-  | EffLe_Vis : forall u (e : E u) k1 k2,
+  (* switching order of k1 k2 causes an inversion bug (?) *)
+  | EffLe_Vis : forall u (e : E u) k2 k1,
       (forall x, EffLe (k1 x) (k2 x)) ->
       EffLe (Vis e k1) (Vis e k2).
 
@@ -332,6 +333,97 @@ Section traces.
     exists (S m). assumption.
   Qed.
 
+  Lemma upto_unknown : forall n (t1 : itree E R),
+      upto (S n) t1 = Unknown ->
+      upto n t1 = Unknown.
+  Proof.
+    induction n; intros.
+    - reflexivity.
+    - simpl in *. destruct (observe t1) eqn:Heqt1; try solve [inversion H].
+      apply IHn. auto.
+  Qed.
+
+
+  Lemma EffLe_upto_succ : forall n m (t1 t2 : itree E R),
+      EffLe (upto n t1) (upto m t2) ->
+      EffLe (upto n t1) (upto (S m) t2).
+  Proof.
+    induction n.
+    - constructor.
+    - induction m; intros.
+      { inversion H. simpl. rewrite <- H1. constructor. }
+      {
+        simpl in *. destruct (observe t1) eqn:Heqt1; auto.
+        - clear IHn.
+          destruct (observe t2) eqn:Heqt2; auto.
+          + specialize (IHm t1 t).
+            rewrite Heqt1 in IHm. apply IHm; auto.
+          + inversion H.
+        - clear IHm.
+          destruct (observe t2) eqn:Heqt2; auto.
+          specialize (IHn (S m) t t2).
+          simpl in IHn. rewrite Heqt2 in IHn. apply IHn. auto.
+        - destruct (observe t2) eqn:Heqt2; auto.
+          + specialize (IHm t1 t).
+            rewrite Heqt1 in IHm. apply IHm; auto.
+          + clear IHm.
+            inversion H. subst. invert_existTs. constructor. intros.
+            apply IHn. auto.
+      }
+  Qed.
+
+  Lemma EffLe_upto_pred : forall n m (t1 t2 : itree E R),
+    EffLe (upto (S n) t1) (upto m t2) ->
+    EffLe (upto n t1) (upto m t2).
+  Proof.
+    induction n.
+    - constructor.
+    - induction m; intros.
+      { rewrite upto_unknown. constructor. inversion H. auto. }
+      {
+        simpl in *. destruct (observe t1) eqn:Heqt1; auto.
+        - clear IHm.
+          destruct (observe t2) eqn:Heqt2; auto;
+            specialize (IHn (S m) t t2);
+            simpl in IHn;
+            rewrite Heqt2 in IHn;
+            apply IHn; auto.
+        - destruct (observe t2) eqn:Heqt2; auto.
+          + inversion H.
+          + specialize (IHm t1 t). rewrite Heqt1 in IHm. auto.
+          + clear IHm.
+            inversion H. subst. invert_existTs. constructor. intros. auto.
+      }
+  Qed.
+
+  (* Lemma test : forall n m (t1 t2 : itree E R), *)
+  (*   EffLe (upto (S n) t1) (upto m t2) -> *)
+  (*   EffLe (upto n t1) (upto (S m) t2). *)
+  (* Proof. *)
+  (*   intros n m. revert n. *)
+  (*   induction m; intros. *)
+  (*   - inversion H. symmetry in H1. apply upto_unknown in H1. rewrite H1. constructor. *)
+  (*   - simpl. *)
+  (* Admitted. *)
+
+  Lemma test_constructor : forall (X : Type) (e : E X) (k1 k2 : X -> itree E R) n,
+      (forall x : X, exists m,
+            EffLe (upto n (k1 x))
+                  (upto m (k2 x))) ->
+      (exists m,
+          EffLe (Vis e (fun x => upto n (k1 x)))
+                (Vis e (fun x => upto m (k2 x)))).
+  Proof.
+    intros.
+    (* generalize dependent k1. generalize dependent k2. generalize dependent e. *)
+    induction n; intros.
+    - exists 1. constructor. intros. constructor.
+    - assert (forall x : X, exists m : nat, EffLe (upto n (k1 x)) (upto m (k2 x))). {
+        intros. destruct (H x) as [m ?]. exists m. apply EffLe_upto_pred; auto.
+      }
+      destruct (IHn H0) as [m ?]. exists m.
+  Abort.
+
   Lemma trace_incl_Eff_incl : forall (t1 t2 : itree E R),
       trace_incl t1 t2 ->
       Eff_incl t1 t2.
@@ -342,13 +434,32 @@ Section traces.
     - exists 0. constructor.
     - unfold is_trace in *. simpl. destruct (observe t1) eqn:Heqt1.
       + assert (is_traceF (RetF r : itreeF E R (itree E R)) [] (Some r)) by constructor.
-        specialize (H _ _ H0). admit.
+        specialize (H _ _ H0).
+        remember []. remember (Some r). remember (observe t2).
+        generalize dependent t2.
+        induction H; intros; try inversion Heql; try inversion Heqo; subst.
+        * exists 1. simpl. rewrite <- Heqi. constructor.
+        * destruct (IHis_traceF eq_refl eq_refl H0 t eq_refl) as [m ?].
+          exists (S m). simpl. rewrite <- Heqi. auto.
       + apply IHn. intros.  apply H. constructor. assumption.
-      + eexists (S _). simpl.
+      + assert (observe t2 = VisF e k) by admit.
+        apply exists_Sm. simpl. rewrite H0. apply test_constructor.
+        intros.
+        assert (trace_incl (k x) (k x)) by admit.
+        apply (IHn _ _ H1).
+
         assert (is_traceF (VisF e k) [EventOut e] None) by constructor.
         specialize (H _ _ H0). inversion H.
         * admit.
-        * invert_existTs. constructor. intros.
+        * simpl.
+
+        apply test_constructor.
+
+        (* eexists (S _). simpl. *)
+        (* assert (is_traceF (VisF e k) [EventOut e] None) by constructor. *)
+        (* specialize (H _ _ H0). inversion H. *)
+        (* * admit. *)
+        (* * invert_existTs. constructor. intros. *)
   Abort.
 
   Lemma eutt_Eff_incl : forall (t1 t2 : itree E R),
@@ -391,5 +502,20 @@ Section traces.
           eexists. constructor.
           intros. apply H4.
 
+
+
+(* Attempt to reproduce bug *)
+(* Inductive ASDF {E : Type -> Type} : Type := *)
+(* | Vis {u} (_ : E u) (_ : u -> ASDF). *)
+(* Inductive ASDF_Eq {E : Type -> Type} : ASDF -> ASDF -> Prop := *)
+(* | ASDF1: forall u (e : E u) k2 k1, *)
+(*     (forall x, ASDF_Eq (k1 x) (k2 x)) -> *)
+(*     ASDF_Eq (Vis e k1) (Vis e k2). *)
+
+(* Lemma test : forall E U (e : E U) (k1 k2 : U -> ASDF), *)
+(*     ASDF_Eq (Vis e k1) (Vis e k2) -> *)
+(*     False. *)
+(* Proof. *)
+(*   intros. inversion H. invert_exists. *)
 
 End traces.
