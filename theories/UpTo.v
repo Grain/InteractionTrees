@@ -407,21 +407,29 @@ Section traces.
   (* Admitted. *)
 
   Lemma test_constructor : forall (X : Type) (e : E X) (k1 k2 : X -> itree E R) n,
-      (forall x : X, exists m,
+      (forall (x : X), exists m,
             EffLe (upto n (k1 x))
                   (upto m (k2 x))) ->
-      (exists m,
+      (exists (f : X -> nat),
           EffLe (Vis e (fun x => upto n (k1 x)))
-                (Vis e (fun x => upto m (k2 x)))).
+                (Vis e (fun x => upto (f x) (k2 x)))).
   Proof.
     intros.
     (* generalize dependent k1. generalize dependent k2. generalize dependent e. *)
     induction n; intros.
-    - exists 1. constructor. intros. constructor.
-    - assert (forall x : X, exists m : nat, EffLe (upto n (k1 x)) (upto m (k2 x))). {
-        intros. destruct (H x) as [m ?]. exists m. apply EffLe_upto_pred; auto.
-      }
-      destruct (IHn H0) as [m ?]. exists m.
+    - exists (fun _ => 1). constructor. intros. constructor.
+    (* - exists (fun x => match (H x) with *)
+    (*            | @ex_intro _ _ n _ => n *)
+    (*            end). *)
+
+    (*   assert (forall x : X, exists m : nat, EffLe (upto n (k1 x)) (upto m (k2 x))). { *)
+    (*     intros. destruct (H x) as [m ?]. exists m. auto. apply EffLe_upto_pred; auto. *)
+    (*   } *)
+
+    (*   destruct (IHn H0) as [m ?]. inversion H1. subst. invert_existTs. *)
+    (*   eexists. constructor. intros. apply EffLe_upto_pred. *)
+    (*   exists (fun x => S (m x)). *)
+    (*   constructor. intros. *)
   Abort.
 
   Lemma trace_incl_Eff_incl : forall (t1 t2 : itree E R),
