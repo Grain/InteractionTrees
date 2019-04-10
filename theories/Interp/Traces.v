@@ -33,12 +33,54 @@ Fixpoint app_trace {E R S} (tr1 : @trace E R) (tr2 : @trace E S) : @trace E S :=
   | _ => tr2
   end.
 
-(* Get the value in the TRet at the end of the trace, if it exists. *)
-Fixpoint trace_ret {E R} (tr : @trace E R) : option R :=
+Fixpoint trace_end {E R} (tr : @trace E R) : trace :=
   match tr with
-  | TRet r => (Some r)
-  | TEventResponse _ _ tr => trace_ret tr
-  | _ => None
+  | TEventResponse _ _ tr => trace_end tr
+  | _ => tr
+  end.
+
+(* (* Get the value in the TRet at the end of the trace, if it exists. *) *)
+(* Fixpoint trace_ret {E R} (tr : @trace E R) : option R := *)
+(*   match tr with *)
+(*   | TRet r => (Some r) *)
+(*   | TEventResponse _ _ tr => trace_ret tr *)
+(*   | _ => None *)
+(*   end. *)
+
+(* Inductive prefix {E : Type -> Type} {R : Type} : @trace E R -> @trace E R -> Prop := *)
+(* | PrefixTEnd : forall t, prefix TEnd t *)
+(* | PrefixTRet : forall r t, *)
+(*     trace_end t = TRet r -> *)
+(*     prefix (TRet r) t *)
+(* | PrefixTEventEnd : forall X (e : E X) t, *)
+(*     trace_end t = TEventEnd e -> *)
+(*     prefix (TEventEnd e) t *)
+(* | PrefixTEventResponse: forall X (e : E X) (x : X) t1 t2, *)
+(*     prefix t1 t2 -> *)
+(*     prefix (TEventResponse e x t1) (TEventResponse e x t2) *)
+(* . *)
+
+(* Fixpoint remove_end_one {E R} (tr : @trace E R) : trace := *)
+(*   match tr with *)
+(*   | TEventResponse e x TEnd => TEnd *)
+(*   | TEventResponse e x (TRet r) => TRet r *)
+(*   | TEventResponse e x (TEventEnd e') => TEventEnd e' *)
+(*   | TEventResponse e x tr => TEventResponse e x (remove_end_one tr) *)
+(*   | _ => tr *)
+(*   end. *)
+Fixpoint remove_end_one {E R} (tr : @trace E R) : @trace E R :=
+  match tr with
+  | TEventResponse e x TEnd => TEnd
+  (* | TEventResponse e x (TRet r) => TEnd *)
+  (* | TEventResponse e x (TEventEnd e') => TEnd *)
+  | TEventResponse e x tr => TEventResponse e x (remove_end_one tr)
+  | _ => TEnd
+  end.
+
+Fixpoint remove_end {E R} (tr : @trace E R) (n : nat) : trace :=
+  match n with
+  | 0 => tr
+  | S n => remove_end (remove_end_one tr) n
   end.
 
 Inductive is_traceF {E : Type -> Type} {R : Type} :
@@ -218,18 +260,164 @@ Abort.
 Definition traces (E : Type -> Type) (R : Type) : Type :=
   @trace E R -> Prop.
 
+Definition prefix_closed {E R} (ts : traces E R) :=
+  forall tr n, ts tr -> ts (remove_end tr n).
+
+Lemma is_trace_remove_one : forall {E R} (t : itree E R) tr,
+    is_trace t tr ->
+    is_trace t (remove_end_one tr).
+Proof.
+  intros. red in H. red.
+  induction H; simpl in *; try constructor; auto.
+  destruct tr; constructor; auto.
+Qed.
+
+Lemma is_trace_prefix_closed : forall {E R} (t : itree E R),
+    prefix_closed (is_trace t).
+Proof.
+  unfold prefix_closed. intros. generalize dependent tr. generalize dependent t.
+  induction n; intros; auto; simpl.
+  apply is_trace_remove_one in H. auto.
+Qed.
+
+Fixpoint trace_len {E R} (tr : @trace E R) : nat :=
+  match tr with
+  | TEnd => 0
+  | TRet _ => 1
+  | TEventEnd _ => 1
+  | TEventResponse _ _ tr => 1 + trace_len tr
+  end.
+
+Lemma trace_len_remove_end_one : forall {E R} (tr : @trace E R) X e (x : X),
+    trace_len tr = trace_len (remove_end (TEventResponse e x tr) 1).
+Proof.
+  intros. induction tr; auto.
+  simpl. f_equal. destruct tr; auto.
+Qed.
+
+Lemma prefix_closed_TEnd : forall {E R} (ts : traces E R),
+    (exists tr, ts tr) ->
+    prefix_closed ts ->
+    ts TEnd.
+Proof.
+  intros. destruct H as [tr ?]. red in H0.
+  remember (trace_len tr).
+  generalize dependent tr.
+  induction n; intros.
+  - destruct tr; inv Heqn. auto.
+  - destruct tr; inv Heqn; auto.
+    + specialize (H0 (TRet r) 1). auto.
+    + specialize (H0 (TEventEnd e) 1). auto.
+    + specialize (H0 _ 1 H). apply (IHn _ H0). apply trace_len_remove_end_one.
+Qed.
+
+(* TODO: Prefix closed property *)
+(* is_trace t has these properties and ret/bind preserve these *)
+
 Definition bind_traces {E : Type -> Type} {R S : Type}
            (ts : traces E R) (kts : R -> traces E S) : traces E S :=
   fun tr =>
-    (tr = TEnd /\ ts TEnd) \/
-    (exists X (e : E X), tr = TEventEnd e /\ ts (TEventEnd e)) \/
+    (tr = TEnd /\ (* but TEnd should always be in ts? Maybe not if we don't have the condition here? *) ts TEnd) \/
+    (* (exists X (e : E X), tr = TEventEnd e /\ ts (TEventEnd e)) \/ *)
+    (* (exists X (e : E X), trace_end tr = TEventEnd e /\ ts tr) \/ *)
     (exists r tr1 tr2,
         tr = app_trace tr1 tr2 /\
-        trace_ret tr1 = Some r /\
+        trace_end tr1 = TRet r /\
         ts tr1 /\
-        kts r tr).
+        kts r tr2).
 
-Definition ret_traces {E : Type -> Type} {R : Type} :
-  R -> traces E R :=
-  fun r tr =>
-    tr = TEnd \/ tr = TRet r.
+Definition ret_traces {E : Type -> Type} {R : Type}
+           (r : R) : traces E R :=
+  fun tr =>
+    tr = TEnd \/
+    tr = TRet r.
+
+(* Lemma trace_ind' : forall (E : Type -> Type) (R : Type) (P : trace -> Prop), *)
+(*     P TEnd -> *)
+(*     (forall r : R, P (TRet r)) -> *)
+(*     (forall (X : Type) (e : E X), P (TEventEnd e)) -> *)
+(*     (forall (X : Type) (e : E X) (x : X) (t : trace), P (remove_end_one t) -> P t) -> *)
+(*     forall t : trace, P t. *)
+(* Proof. *)
+(*   intros. induction t; auto. *)
+(* Admitted. *)
+
+Lemma left : forall E R1 R2 (r : R1) (f : R1 -> traces E R2) (t : trace),
+    (forall r', prefix_closed (f r')) ->
+    bind_traces (ret_traces r) f t <-> f r t.
+Proof.
+  split.
+  {
+    intros. red in H0.
+    destruct H0 as [[? ?] | [? [? [? [? [? [? ?]]]]]]]; subst.
+    (* destruct H as [[? ?] | [[? [? [? ?]]] | [? [? [? [? [? [? ?]]]]]]]]; subst. *)
+    - inv H1.
+      + admit. (* just add this as additional assumption *)
+      + inv H0.
+    (* - inv H0; inv H. *)
+    - inv H2; inv H1. auto.
+  }
+  {
+    intros. red.
+    remember (trace_len t).
+    generalize dependent t.
+    induction n; intros.
+    - destruct t; inv Heqn.
+      left. split; auto. constructor; auto.
+    - right. destruct t; inv Heqn.
+      + exists r. exists (TRet r). exists (TRet r0). repeat split; auto. right; auto.
+      + exists r. exists (TRet r). exists (TEventEnd e). repeat split; auto. right; auto.
+      + assert (f r (remove_end (TEventResponse e x t) 1)).
+        { apply H; auto. }
+        pose proof (trace_len_remove_end_one t X e x).
+        specialize (IHn _ H1 H2). destruct IHn.
+        * destruct H3. inv H3. inv H2. destruct t; inv H6.
+          exists r. exists (TRet r). exists (TEventResponse e x TEnd). repeat split; auto.
+          right. auto.
+        * destruct H3 as [r0 [tr1 [tr2 [? [? [? ?]]]]]].
+          exists r0. exists tr1. eexists. repeat split; auto.
+          (* oh no *)
+
+  (*       simpl in IHn. specialize (IHn eq_refl). destruct IHn. *)
+  (*       * destruct H2. subst. exists *)
+
+
+  (*   induction t. *)
+  (*   - left. split; auto. red. auto. *)
+  (*   - right. exists r, (TRet r), (TRet r0). repeat split; auto. right. auto. *)
+  (*   - right. exists r, (TRet r), (TEventEnd e). repeat split; auto. right. auto. *)
+  (*   - right. assert (f r (remove_end_one t)) by admit. specialize (IHt H0). clear H0. *)
+  (*     destruct IHt. *)
+  (*     + destruct H0. subst. (* exists r, (TRet r), (TEventResponse e x TEnd). repeat split; auto. *) *)
+  (*       admit. *)
+  (*     (* + destruct H0 as [? [? [? ?]]]. inv H1; inv H2. *) *)
+  (*     + destruct H0 as [? [? [? [? [? [? ?]]]]]]. *)
+  (*       exists x0, (TEventResponse e x x1), x2. repeat split; auto. *)
+  (*       * rewrite H0. reflexivity. *)
+  (*       * admit. *)
+  (* } *)
+Abort.
+
+Lemma right : forall E R (ts : traces E R) (t : trace),
+    bind_traces ts ret_traces t <-> ts t.
+Proof.
+  split.
+  {
+    intros. red in H. destruct H as [? | [? | ?]].
+    - destruct H. subst. auto.
+    - destruct H as [? [? [? ?]]]. subst. auto.
+    - destruct H as [? [? [? [? [? [? ?]]]]]]. subst.
+  }
+Abort.
+
+Lemma assoc : forall E R1 R2 R3 (ts : traces E R1) (f : R1 -> traces E R2) (g : R2 -> traces E R3) t,
+    bind_traces (bind_traces ts f) g t <-> bind_traces ts (fun x => bind_traces (f x) g) t.
+Proof.
+  split.
+  {
+    intros.
+  }
+  {
+
+  }
+Qed.
