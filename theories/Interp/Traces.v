@@ -311,15 +311,43 @@ Proof.
     + specialize (H0 _ 1 H). apply (IHn _ H0). apply trace_len_remove_end_one.
 Qed.
 
+Lemma test' : forall {E R} X (e : E X) (x : X) (tr : @trace E R),
+    app_trace (TEventResponse e x tr) TEnd = (TEventResponse e x tr) \/
+    app_trace (TEventResponse e x tr) TEnd = remove_end_one (TEventResponse e x tr).
+Proof.
+  intros.
+  induction tr; auto.
+  destruct IHtr.
+  - left. simpl in *. inv H. repeat rewrite H1. auto.
+  - right. simpl in *. destruct tr; auto; inv H.
+    f_equal. f_equal. simpl. auto.
+Qed.
+
+Lemma app_trace_TRet : forall {E R} (tr : @trace E R) (r : R),
+    trace_end tr = (TRet r) ->
+    app_trace tr (TRet r) = tr.
+Proof.
+  intros. induction tr; auto.
+  simpl. f_equal. apply IHtr. inv H. auto.
+Qed.
+
+Fixpoint id_trace {E : Type -> Type} {R1 R2 : Type} (tr : @trace E R1) (r' : R2) : (@trace E R2) :=
+  match tr with
+  | TEnd => TEnd
+  | TRet r => TRet r'
+  | TEventEnd e => TEventEnd e
+  | TEventResponse e x tr => TEventResponse e x (id_trace tr r')
+  end.
+
 (* TODO: Prefix closed property *)
 (* is_trace t has these properties and ret/bind preserve these *)
 
 Definition bind_traces {E : Type -> Type} {R S : Type}
            (ts : traces E R) (kts : R -> traces E S) : traces E S :=
   fun tr =>
-    (tr = TEnd /\ (* but TEnd should always be in ts? Maybe not if we don't have the condition here? *) ts TEnd) \/
+    (tr = TEnd /\ ts TEnd) \/
     (* (exists X (e : E X), tr = TEventEnd e /\ ts (TEventEnd e)) \/ *)
-    (* (exists X (e : E X), trace_end tr = TEventEnd e /\ ts tr) \/ *)
+    (exists X (e : E X) (r : R), trace_end tr = TEventEnd e /\ ts (id_trace tr r)) \/
     (exists r tr1 tr2,
         tr = app_trace tr1 tr2 /\
         trace_end tr1 = TRet r /\
@@ -344,71 +372,51 @@ Definition ret_traces {E : Type -> Type} {R : Type}
 
 Lemma left : forall E R1 R2 (r : R1) (f : R1 -> traces E R2) (t : trace),
     (forall r', prefix_closed (f r')) ->
+    (forall r', f r' TEnd) ->
     bind_traces (ret_traces r) f t <-> f r t.
 Proof.
   split.
   {
-    intros. red in H0.
-    destruct H0 as [[? ?] | [? [? [? [? [? [? ?]]]]]]]; subst.
-    (* destruct H as [[? ?] | [[? [? [? ?]]] | [? [? [? [? [? [? ?]]]]]]]]; subst. *)
-    - inv H1.
-      + admit. (* just add this as additional assumption *)
-      + inv H0.
-    (* - inv H0; inv H. *)
-    - inv H2; inv H1. auto.
+    intros. red in H1.
+    destruct H1 as [[? ?] | [? | [? [? [? [? [? [? ?]]]]]]]]; subst.
+    - inv H2; auto.
+    - destruct H1 as [? [? [? [? ?]]]].
+      inv H2.
+      + destruct t; inv H3. auto.
+      + destruct t; inv H3. inv H1.
+    - inv H3; inv H2. auto.
   }
   {
     intros. red.
-    remember (trace_len t).
-    generalize dependent t.
-    induction n; intros.
-    - destruct t; inv Heqn.
-      left. split; auto. constructor; auto.
-    - right. destruct t; inv Heqn.
-      + exists r. exists (TRet r). exists (TRet r0). repeat split; auto. right; auto.
-      + exists r. exists (TRet r). exists (TEventEnd e). repeat split; auto. right; auto.
-      + assert (f r (remove_end (TEventResponse e x t) 1)).
-        { apply H; auto. }
-        pose proof (trace_len_remove_end_one t X e x).
-        specialize (IHn _ H1 H2). destruct IHn.
-        * destruct H3. inv H3. inv H2. destruct t; inv H6.
-          exists r. exists (TRet r). exists (TEventResponse e x TEnd). repeat split; auto.
-          right. auto.
-        * destruct H3 as [r0 [tr1 [tr2 [? [? [? ?]]]]]].
-          exists r0. exists tr1. eexists. repeat split; auto.
-          (* oh no *)
-
-  (*       simpl in IHn. specialize (IHn eq_refl). destruct IHn. *)
-  (*       * destruct H2. subst. exists *)
-
-
-  (*   induction t. *)
-  (*   - left. split; auto. red. auto. *)
-  (*   - right. exists r, (TRet r), (TRet r0). repeat split; auto. right. auto. *)
-  (*   - right. exists r, (TRet r), (TEventEnd e). repeat split; auto. right. auto. *)
-  (*   - right. assert (f r (remove_end_one t)) by admit. specialize (IHt H0). clear H0. *)
-  (*     destruct IHt. *)
-  (*     + destruct H0. subst. (* exists r, (TRet r), (TEventResponse e x TEnd). repeat split; auto. *) *)
-  (*       admit. *)
-  (*     (* + destruct H0 as [? [? [? ?]]]. inv H1; inv H2. *) *)
-  (*     + destruct H0 as [? [? [? [? [? [? ?]]]]]]. *)
-  (*       exists x0, (TEventResponse e x x1), x2. repeat split; auto. *)
-  (*       * rewrite H0. reflexivity. *)
-  (*       * admit. *)
-  (* } *)
-Abort.
+    right. right. exists r. exists (TRet r). exists t. repeat split; auto. right. auto.
+  }
+Qed.
 
 Lemma right : forall E R (ts : traces E R) (t : trace),
+    prefix_closed ts ->
     bind_traces ts ret_traces t <-> ts t.
 Proof.
   split.
   {
-    intros. red in H. destruct H as [? | [? | ?]].
-    - destruct H. subst. auto.
-    - destruct H as [? [? [? ?]]]. subst. auto.
-    - destruct H as [? [? [? [? [? [? ?]]]]]]. subst.
+    intros. red in H0. destruct H0 as [[] | [? | [r [tr1 [tr2 [? [? [? ?]]]]]]]]; subst; auto.
+    admit.
+    inv H3; simpl.
+    - destruct tr1; auto.
+      + admit.
+      + admit.
+      + destruct (test' X e x tr1).
+        * rewrite H0. auto.
+        * rewrite H0. admit.
+    - rewrite app_trace_TRet; auto.
   }
-Abort.
+  {
+    intros. red.
+    induction t; auto.
+    - right. right. exists r. exists (TRet r). exists (TRet r). repeat split; auto. right. auto.
+    - right. left. admit.
+    - right. right. exists r. exists (TRet r). exists (TRet r). repeat split; auto. right. auto.
+  }
+Qed.
 
 Lemma assoc : forall E R1 R2 R3 (ts : traces E R1) (f : R1 -> traces E R2) (g : R2 -> traces E R3) t,
     bind_traces (bind_traces ts f) g t <-> bind_traces ts (fun x => bind_traces (f x) g) t.
