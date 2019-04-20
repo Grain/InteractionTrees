@@ -311,7 +311,7 @@ Proof.
     + specialize (H0 _ 1 H). apply (IHn _ H0). apply trace_len_remove_end_one.
 Qed.
 
-Lemma test' : forall {E R} X (e : E X) (x : X) (tr : @trace E R),
+Lemma app_TEnd : forall {E R} X (e : E X) (x : X) (tr : @trace E R),
     app_trace (TEventResponse e x tr) TEnd = (TEventResponse e x tr) \/
     app_trace (TEventResponse e x tr) TEnd = remove_end_one (TEventResponse e x tr).
 Proof.
@@ -331,34 +331,90 @@ Proof.
   simpl. f_equal. apply IHtr. inv H. auto.
 Qed.
 
-Fixpoint id_trace {E : Type -> Type} {R1 R2 : Type} (tr : @trace E R1) (r' : R2) : (@trace E R2) :=
-  match tr with
-  | TEnd => TEnd
-  | TRet r => TRet r'
-  | TEventEnd e => TEventEnd e
-  | TEventResponse e x tr => TEventResponse e x (id_trace tr r')
-  end.
+Fixpoint cast_TEnd {E R1 R2} (tr : @trace E R1) (H : trace_end tr = TEnd) : @trace E R2.
+  induction tr.
+  - apply TEnd.
+  - discriminate H.
+  - discriminate H.
+  - specialize (IHtr H). apply (TEventResponse e x IHtr).
+Defined.
+Lemma cast_TEnd_same : forall E R (tr : @trace E R) H, cast_TEnd tr H = tr.
+Proof.
+  intros. induction tr; try inv H; auto.
+  simpl in *. f_equal. specialize (IHtr H). rewrite <- IHtr.
+  unfold cast_TEnd. simpl. destruct tr; auto.
+Qed.
+
+Fixpoint cast_TEventEnd {E R1 R2 X} {e : E X}
+         (tr : @trace E R1) (H : trace_end tr = TEventEnd e) : @trace E R2.
+  induction tr.
+  - discriminate H.
+  - discriminate H.
+  - apply (TEventEnd e).
+  - specialize (IHtr H). apply (TEventResponse e0 x IHtr).
+Defined.
+Lemma cast_TEventEnd_same : forall E R X
+                              (tr : @trace E R)
+                              (e : E X)
+                              (H : trace_end tr = TEventEnd e),
+    cast_TEventEnd tr H = tr.
+Proof.
+  intros. induction tr; try inv H; auto.
+  simpl in *. f_equal. specialize (IHtr H). rewrite <- IHtr.
+  unfold cast_TEnd. simpl. destruct tr; auto.
+Qed.
+
+Lemma trace_end_TEnd_remove_end : forall E R (tr : @trace E R) n,
+    trace_end tr = TEnd ->
+    trace_end (remove_end tr n) = TEnd.
+Proof.
+  intros. generalize dependent tr.
+  induction n; intros; auto.
+  simpl. apply IHn. clear IHn.
+  induction tr; simpl; auto.
+  destruct tr; auto.
+Qed.
 
 (* TODO: Prefix closed property *)
 (* is_trace t has these properties and ret/bind preserve these *)
 
-Definition bind_traces {E : Type -> Type} {R S : Type}
-           (ts : traces E R) (kts : R -> traces E S) : traces E S :=
+Definition bind_traces {E : Type -> Type} {R1 R2 : Type}
+           (ts : traces E R1) (kts : R1 -> traces E R2) : traces E R2 :=
   fun tr =>
-    (tr = TEnd /\ ts TEnd) \/
-    (* (exists X (e : E X), tr = TEventEnd e /\ ts (TEventEnd e)) \/ *)
-    (exists X (e : E X) (r : R), trace_end tr = TEventEnd e /\ ts (id_trace tr r)) \/
+    (exists (H : trace_end tr = TEnd), ts (cast_TEnd _ H)) \/
+    (exists X (e : E X) (H : trace_end tr = TEventEnd e), ts (cast_TEventEnd _ H)) \/
     (exists r tr1 tr2,
         tr = app_trace tr1 tr2 /\
         trace_end tr1 = TRet r /\
         ts tr1 /\
         kts r tr2).
+Lemma bind_prefix_closed : forall E R1 R2 (ts : traces E R1) (kts : R1 -> traces E R2),
+    prefix_closed ts ->
+    (forall (r : R1), prefix_closed (kts r)) ->
+    prefix_closed (bind_traces ts kts).
+Proof.
+  red. intros.
+  induction n; auto.
+  destruct H1 as [[? ?] | [? | ?]].
+  - left. exists (trace_end_TEnd_remove_end _ _ _ (S n) x).
+    rewrite cast_TEnd_same.
+Qed.
+
+
+
 
 Definition ret_traces {E : Type -> Type} {R : Type}
            (r : R) : traces E R :=
   fun tr =>
     tr = TEnd \/
     tr = TRet r.
+Lemma ret_prefix_closed : forall E R (r : R), prefix_closed (ret_traces r : traces E R).
+Proof.
+  red. intros.
+  induction n; simpl; auto.
+  inv H; simpl; auto.
+  clear IHn. induction n; simpl; auto. constructor. auto.
+Qed.
 
 (* Lemma trace_ind' : forall (E : Type -> Type) (R : Type) (P : trace -> Prop), *)
 (*     P TEnd -> *)
@@ -379,7 +435,8 @@ Proof.
   {
     intros. red in H1.
     destruct H1 as [[? ?] | [? | [? [? [? [? [? [? ?]]]]]]]]; subst.
-    - inv H2; auto.
+    - induction t; try inv x; auto. inv H1; auto.
+      + simpl in *. inv H2.
     - destruct H1 as [? [? [? [? ?]]]].
       inv H2.
       + destruct t; inv H3. auto.
