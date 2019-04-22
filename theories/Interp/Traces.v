@@ -2,7 +2,8 @@
 
 (* begin hide *)
 From Coq Require Import
-     List.
+     List
+     Logic.ProofIrrelevance.
 
 Import ListNotations.
 
@@ -338,7 +339,7 @@ Fixpoint cast_TEnd {E R1 R2} (tr : @trace E R1) (H : trace_end tr = TEnd) : @tra
   - discriminate H.
   - specialize (IHtr H). apply (TEventResponse e x IHtr).
 Defined.
-Lemma cast_TEnd_same : forall E R (tr : @trace E R) H, cast_TEnd tr H = tr.
+Lemma cast_TEnd_same : forall {E R} (tr : @trace E R) H, cast_TEnd tr H = tr.
 Proof.
   intros. induction tr; try inv H; auto.
   simpl in *. f_equal. specialize (IHtr H). rewrite <- IHtr.
@@ -353,7 +354,7 @@ Fixpoint cast_TEventEnd {E R1 R2 X} {e : E X}
   - apply (TEventEnd e).
   - specialize (IHtr H). apply (TEventResponse e0 x IHtr).
 Defined.
-Lemma cast_TEventEnd_same : forall E R X
+Lemma cast_TEventEnd_same : forall {E R X}
                               (tr : @trace E R)
                               (e : E X)
                               (H : trace_end tr = TEventEnd e),
@@ -364,16 +365,95 @@ Proof.
   unfold cast_TEnd. simpl. destruct tr; auto.
 Qed.
 
-Lemma trace_end_TEnd_remove_end : forall E R (tr : @trace E R) n,
+Lemma remove_end_remove_end_one_commute : forall {E R} (tr : @trace E R) n,
+    remove_end (remove_end_one tr) n = remove_end_one (remove_end tr n).
+Proof.
+  intros. generalize dependent tr.
+  induction n; intros; auto. simpl. rewrite <- IHn. auto.
+Qed.
+
+Lemma trace_end_TEnd_remove_end_one : forall {E R} (tr : @trace E R),
+    trace_end tr = TEnd ->
+    trace_end (remove_end_one tr) = TEnd.
+Proof.
+  intros. induction tr; simpl; auto.
+  destruct tr; auto.
+Qed.
+
+Lemma trace_end_TEnd_remove_end : forall {E R} (tr : @trace E R) n,
     trace_end tr = TEnd ->
     trace_end (remove_end tr n) = TEnd.
 Proof.
   intros. generalize dependent tr.
   induction n; intros; auto.
-  simpl. apply IHn. clear IHn.
-  induction tr; simpl; auto.
-  destruct tr; auto.
+  simpl. apply IHn. apply trace_end_TEnd_remove_end_one. auto.
 Qed.
+
+(* Lemma trace_end_TEventEnd_remove_end : forall {E R X} (tr : @trace E R) n (e : E X), *)
+(*     trace_end tr = TEventEnd e -> *)
+(*     trace_end (remove_end tr n) = TEnd. *)
+(* Proof. *)
+(*   intros. generalize dependent tr. *)
+(*   induction n; intros; auto. *)
+(*   simpl. apply IHn. clear IHn. *)
+(*   induction tr; simpl; auto. *)
+(*   destruct tr; auto. *)
+(*   intros. simpl. induction tr; induction n; simpl; auto. *)
+(*   - destruct tr; auto. *)
+(*   - destruct tr; auto. *)
+
+Lemma cast_TEnd_unfold : forall {E R1 R2 X} (e : E X) (x : X) (tr : @trace E R1) H H',
+    cast_TEnd (TEventResponse e x tr) H = TEventResponse e x (cast_TEnd tr H' : @trace E R2).
+Proof.
+  intros. destruct tr; auto; try solve [inv H'].
+  simpl in *. repeat f_equal. apply proof_irrelevance.
+Qed.
+
+Opaque cast_TEnd.
+
+Lemma cast_TEnd_TEnd : forall {E R1 R2} (tr : @trace E R1) H,
+    (cast_TEnd tr H : @trace E R2) = TEnd ->
+    tr = TEnd.
+Proof.
+  intros. destruct tr; auto. inv H0.
+Qed.
+
+Lemma cast_TEnd_trace_end : forall {E R1 R2} (tr : @trace E R1) H,
+    trace_end tr = TEnd ->
+    trace_end (cast_TEnd tr H) = (TEnd : @trace E R2).
+Proof.
+  intros. induction tr; auto; try solve [inv H]. simpl in H.
+  rewrite (cast_TEnd_unfold _ _ _ _ H). simpl. apply IHtr; auto.
+Qed.
+
+Lemma cast_TEnd_remove_end_one_commute : forall {E R1 R2} (tr : @trace E R1) H,
+    (cast_TEnd (remove_end_one tr) (trace_end_TEnd_remove_end_one _ H) : @trace E R2) =
+    remove_end_one (cast_TEnd tr H).
+Proof.
+  intros. induction tr; auto; try inv H.
+  pose proof H. simpl in H.
+  rewrite (cast_TEnd_unfold e x _ _ H).
+  destruct tr; auto; inv H0.
+  rewrite (cast_TEnd_unfold e0 x0 _ _ H2).
+  simpl in *. assert (H = H2) by apply proof_irrelevance. subst.
+  rewrite (cast_TEnd_unfold e x _ _ (trace_end_TEnd_remove_end_one (TEventResponse e0 x0 tr) H2)).
+  f_equal. rewrite IHtr.
+  pose proof (@cast_TEnd_trace_end _ _ R2 _ H2 H2).
+  destruct (cast_TEnd tr H2) eqn:H'; auto; inv H.
+  - rewrite (cast_TEnd_unfold e0 x0 _ _ H2). simpl. rewrite H'. auto.
+  - simpl. rewrite (cast_TEnd_unfold e0 x0 _ _ H2). simpl.
+    rewrite H'. auto.
+Qed.
+
+Lemma cast_TEnd_remove_end_commute : forall {E R1 R2} (tr : @trace E R1) n H,
+    (cast_TEnd (remove_end tr n) (trace_end_TEnd_remove_end _ _ H) : @trace E R2) =
+    remove_end (cast_TEnd tr H) n.
+Proof.
+  intros. generalize dependent tr. induction n; intros; auto.
+  - simpl. f_equal. apply proof_irrelevance.
+  - simpl. rewrite remove_end_remove_end_one_commute. rewrite <- IHn. simpl.
+Qed.
+
 
 (* TODO: Prefix closed property *)
 (* is_trace t has these properties and ret/bind preserve these *)
@@ -396,12 +476,18 @@ Proof.
   red. intros.
   induction n; auto.
   destruct H1 as [[? ?] | [? | ?]].
-  - left. exists (trace_end_TEnd_remove_end _ _ _ (S n) x).
-    rewrite cast_TEnd_same.
-Qed.
-
-
-
+  - red. left. (* exists (trace_end_TEnd_remove_end _ (S n) x). *)
+    red in H. (* cast commutes with remove_end? *)
+    admit.
+  - destruct H1 as [? [? [? ?]]]. (* can also end with TEnd *)
+    right. left. exists x, x0. red in H.
+    admit.
+  - destruct H1 as [? [? [? [? [? [? ?]]]]]].
+    subst. simpl. destruct IHn as [? | [? | ?]].
+    + left. admit.
+    + right. left. admit.
+    + right. right. admit.
+Abort.
 
 Definition ret_traces {E : Type -> Type} {R : Type}
            (r : R) : traces E R :=
@@ -415,16 +501,6 @@ Proof.
   inv H; simpl; auto.
   clear IHn. induction n; simpl; auto. constructor. auto.
 Qed.
-
-(* Lemma trace_ind' : forall (E : Type -> Type) (R : Type) (P : trace -> Prop), *)
-(*     P TEnd -> *)
-(*     (forall r : R, P (TRet r)) -> *)
-(*     (forall (X : Type) (e : E X), P (TEventEnd e)) -> *)
-(*     (forall (X : Type) (e : E X) (x : X) (t : trace), P (remove_end_one t) -> P t) -> *)
-(*     forall t : trace, P t. *)
-(* Proof. *)
-(*   intros. induction t; auto. *)
-(* Admitted. *)
 
 Lemma left : forall E R1 R2 (r : R1) (f : R1 -> traces E R2) (t : trace),
     (forall r', prefix_closed (f r')) ->
