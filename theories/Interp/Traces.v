@@ -372,6 +372,19 @@ Proof.
   induction n; intros; auto. simpl. rewrite <- IHn. auto.
 Qed.
 
+Lemma remove_end_Sn : forall {E R} (tr : @trace E R) n,
+    remove_end tr (S n) = remove_end (remove_end tr n) 1.
+Proof.
+  intros. simpl. rewrite remove_end_remove_end_one_commute. auto.
+Qed.
+
+Lemma ahhhhh : forall {E R1 R2} (tr : @trace E R1) n H H',
+    cast_TEnd (remove_end (remove_end_one tr) n) H =
+    (cast_TEnd (remove_end_one (remove_end tr n)) H' : @trace E R2).
+Proof.
+  intros. simpl.
+Admitted.
+
 Lemma trace_end_TEnd_remove_end_one : forall {E R} (tr : @trace E R),
     trace_end tr = TEnd ->
     trace_end (remove_end_one tr) = TEnd.
@@ -426,37 +439,37 @@ Proof.
   rewrite (cast_TEnd_unfold _ _ _ _ H). simpl. apply IHtr; auto.
 Qed.
 
-Lemma cast_TEnd_remove_end_one_commute : forall {E R1 R2} (tr : @trace E R1) H,
-    (cast_TEnd (remove_end_one tr) (trace_end_TEnd_remove_end_one _ H) : @trace E R2) =
-    remove_end_one (cast_TEnd tr H).
+Lemma cast_TEnd_remove_end_one_commute : forall {E R1 R2} (tr : @trace E R1) H H',
+    (cast_TEnd (remove_end_one tr) H : @trace E R2) =
+    remove_end_one (cast_TEnd tr H').
 Proof.
-  intros. induction tr; auto; try inv H.
-  pose proof H. simpl in H.
-  rewrite (cast_TEnd_unfold e x _ _ H).
-  destruct tr; auto; inv H0.
-  rewrite (cast_TEnd_unfold e0 x0 _ _ H2).
-  simpl in *. assert (H = H2) by apply proof_irrelevance. subst.
-  rewrite (cast_TEnd_unfold e x _ _ (trace_end_TEnd_remove_end_one (TEventResponse e0 x0 tr) H2)).
-  f_equal. rewrite IHtr.
-  pose proof (@cast_TEnd_trace_end _ _ R2 _ H2 H2).
-  destruct (cast_TEnd tr H2) eqn:H'; auto; inv H.
-  - rewrite (cast_TEnd_unfold e0 x0 _ _ H2). simpl. rewrite H'. auto.
-  - simpl. rewrite (cast_TEnd_unfold e0 x0 _ _ H2). simpl.
-    rewrite H'. auto.
+  intros. induction tr; auto; try inv H'.
+  erewrite cast_TEnd_unfold. Unshelve. 2: { auto. }
+  simpl.
+  destruct tr; auto; try inv H'.
+  erewrite cast_TEnd_unfold. Unshelve. 2: { auto. }
+  erewrite cast_TEnd_unfold. Unshelve. 2: { auto. }
+  f_equal.
+  erewrite IHtr. Unshelve. 2: { auto. }
+  clear IHtr. f_equal.
+  erewrite cast_TEnd_unfold. auto.
 Qed.
 
-Lemma cast_TEnd_remove_end_commute : forall {E R1 R2} (tr : @trace E R1) n H,
-    (cast_TEnd (remove_end tr n) (trace_end_TEnd_remove_end _ _ H) : @trace E R2) =
-    remove_end (cast_TEnd tr H) n.
+Lemma cast_TEnd_remove_end_commute : forall {E R1 R2} (tr : @trace E R1) n H H',
+    (cast_TEnd (remove_end tr n) H : @trace E R2) =
+    remove_end (cast_TEnd tr H') n.
 Proof.
   intros. generalize dependent tr. induction n; intros; auto.
   - simpl. f_equal. apply proof_irrelevance.
-  - simpl. rewrite remove_end_remove_end_one_commute. rewrite <- IHn. simpl.
+  - simpl. simpl in H. pose proof H. rewrite remove_end_remove_end_one_commute in H0.
+    rewrite (ahhhhh _ _ _ H0).
+    (* apply (trace_end_TEnd_remove_end _ _ _ n) in H'. *)
+    erewrite cast_TEnd_remove_end_one_commute.
+    rewrite remove_end_remove_end_one_commute. erewrite IHn. auto.
+    Unshelve. apply trace_end_TEnd_remove_end. auto.
 Qed.
 
-
-(* TODO: Prefix closed property *)
-(* is_trace t has these properties and ret/bind preserve these *)
+(* Lemma test : forall {E R1 R2} (tr : @trace E R1)  *)
 
 Definition bind_traces {E : Type -> Type} {R1 R2 : Type}
            (ts : traces E R1) (kts : R1 -> traces E R2) : traces E R2 :=
@@ -476,15 +489,23 @@ Proof.
   red. intros.
   induction n; auto.
   destruct H1 as [[? ?] | [? | ?]].
-  - red. left. (* exists (trace_end_TEnd_remove_end _ (S n) x). *)
-    red in H. (* cast commutes with remove_end? *)
-    admit.
+  - red. left. red in H.
+    eexists. erewrite cast_TEnd_remove_end_commute.
+    apply H; eauto.
+    Unshelve. apply trace_end_TEnd_remove_end; auto.
   - destruct H1 as [? [? [? ?]]]. (* can also end with TEnd *)
     right. left. exists x, x0. red in H.
     admit.
   - destruct H1 as [? [? [? [? [? [? ?]]]]]].
-    subst. simpl. destruct IHn as [? | [? | ?]].
-    + left. admit.
+    subst. destruct IHn as [[? ?] | [[? ?] | [? ?]]].
+    + left.
+      eexists. Unshelve. 2: { rewrite remove_end_Sn. apply trace_end_TEnd_remove_end; auto. }
+
+      erewrite cast_TEnd_remove_end_commute.
+      Unshelve.
+      2: { apply trace_end_TEnd_remove_end. auto. }
+      red in H. rewrite remove_end_Sn. apply (H _ 1).
+      erewrite cast_TEnd_remove_end_one_commute. apply H. auto.
     + right. left. admit.
     + right. right. admit.
 Abort.
