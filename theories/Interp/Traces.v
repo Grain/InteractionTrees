@@ -27,63 +27,6 @@ Inductive trace {E : Type -> Type} {R : Type} : Type :=
 | TEventResponse : forall {X}, E X -> X -> trace -> trace
 .
 
-(* Append two traces, ignoring the end of the first trace. *)
-Fixpoint app_trace {E R S} (tr1 : @trace E R) (tr2 : @trace E S) : @trace E S :=
-  match tr1 with
-  | TEventResponse e x tr => TEventResponse e x (app_trace tr tr2)
-  | _ => tr2
-  end.
-
-Fixpoint trace_end {E R} (tr : @trace E R) : trace :=
-  match tr with
-  | TEventResponse _ _ tr => trace_end tr
-  | _ => tr
-  end.
-
-(* (* Get the value in the TRet at the end of the trace, if it exists. *) *)
-(* Fixpoint trace_ret {E R} (tr : @trace E R) : option R := *)
-(*   match tr with *)
-(*   | TRet r => (Some r) *)
-(*   | TEventResponse _ _ tr => trace_ret tr *)
-(*   | _ => None *)
-(*   end. *)
-
-(* Inductive prefix {E : Type -> Type} {R : Type} : @trace E R -> @trace E R -> Prop := *)
-(* | PrefixTEnd : forall t, prefix TEnd t *)
-(* | PrefixTRet : forall r t, *)
-(*     trace_end t = TRet r -> *)
-(*     prefix (TRet r) t *)
-(* | PrefixTEventEnd : forall X (e : E X) t, *)
-(*     trace_end t = TEventEnd e -> *)
-(*     prefix (TEventEnd e) t *)
-(* | PrefixTEventResponse: forall X (e : E X) (x : X) t1 t2, *)
-(*     prefix t1 t2 -> *)
-(*     prefix (TEventResponse e x t1) (TEventResponse e x t2) *)
-(* . *)
-
-(* Fixpoint remove_end_one {E R} (tr : @trace E R) : trace := *)
-(*   match tr with *)
-(*   | TEventResponse e x TEnd => TEnd *)
-(*   | TEventResponse e x (TRet r) => TRet r *)
-(*   | TEventResponse e x (TEventEnd e') => TEventEnd e' *)
-(*   | TEventResponse e x tr => TEventResponse e x (remove_end_one tr) *)
-(*   | _ => tr *)
-(*   end. *)
-Fixpoint remove_end_one {E R} (tr : @trace E R) : @trace E R :=
-  match tr with
-  | TEventResponse e x TEnd => TEnd
-  (* | TEventResponse e x (TRet r) => TEnd *)
-  (* | TEventResponse e x (TEventEnd e') => TEnd *)
-  | TEventResponse e x tr => TEventResponse e x (remove_end_one tr)
-  | _ => TEnd
-  end.
-
-Fixpoint remove_end {E R} (tr : @trace E R) (n : nat) : trace :=
-  match n with
-  | 0 => tr
-  | S n => remove_end (remove_end_one tr) n
-  end.
-
 Inductive is_traceF {E : Type -> Type} {R : Type} :
   itreeF E R (itree E R) -> @trace E R -> Prop :=
 | TraceEmpty : forall t, is_traceF t TEnd
@@ -261,6 +204,47 @@ Abort.
 Definition traces (E : Type -> Type) (R : Type) : Type :=
   @trace E R -> Prop.
 
+(* Append two traces, ignoring the end of the first trace. *)
+Fixpoint app_trace {E R S} (tr1 : @trace E R) (tr2 : @trace E S) : @trace E S :=
+  match tr1 with
+  | TEventResponse e x tr => TEventResponse e x (app_trace tr tr2)
+  | _ => tr2
+  end.
+
+Fixpoint trace_end {E R} (tr : @trace E R) : trace :=
+  match tr with
+  | TEventResponse _ _ tr => trace_end tr
+  | _ => tr
+  end.
+
+Fixpoint remove_end_one {E R} (tr : @trace E R) : @trace E R :=
+  match tr with
+  | TEventResponse e x TEnd => TEnd
+  | TEventResponse e x tr => TEventResponse e x (remove_end_one tr)
+  | _ => TEnd
+  end.
+
+Fixpoint remove_end {E R} (tr : @trace E R) (n : nat) : trace :=
+  match n with
+  | 0 => tr
+  | S n => remove_end (remove_end_one tr) n
+  end.
+
+Fixpoint trace_len {E R} (tr : @trace E R) : nat :=
+  match tr with
+  | TEnd => 0
+  | TRet _ => 1
+  | TEventEnd _ => 1
+  | TEventResponse _ _ tr => 1 + trace_len tr
+  end.
+
+Lemma trace_len_remove_end_one : forall {E R} (tr : @trace E R) X e (x : X),
+    trace_len tr = trace_len (remove_end (TEventResponse e x tr) 1).
+Proof.
+  intros. induction tr; auto.
+  simpl. f_equal. destruct tr; auto.
+Qed.
+
 Definition prefix_closed {E R} (ts : traces E R) :=
   forall tr n, ts tr -> ts (remove_end tr n).
 
@@ -279,21 +263,6 @@ Proof.
   unfold prefix_closed. intros. generalize dependent tr. generalize dependent t.
   induction n; intros; auto; simpl.
   apply is_trace_remove_one in H. auto.
-Qed.
-
-Fixpoint trace_len {E R} (tr : @trace E R) : nat :=
-  match tr with
-  | TEnd => 0
-  | TRet _ => 1
-  | TEventEnd _ => 1
-  | TEventResponse _ _ tr => 1 + trace_len tr
-  end.
-
-Lemma trace_len_remove_end_one : forall {E R} (tr : @trace E R) X e (x : X),
-    trace_len tr = trace_len (remove_end (TEventResponse e x tr) 1).
-Proof.
-  intros. induction tr; auto.
-  simpl. f_equal. destruct tr; auto.
 Qed.
 
 Lemma prefix_closed_TEnd : forall {E R} (ts : traces E R),
@@ -339,6 +308,7 @@ Fixpoint cast_TEnd {E R1 R2} (tr : @trace E R1) (H : trace_end tr = TEnd) : @tra
   - discriminate H.
   - specialize (IHtr H). apply (TEventResponse e x IHtr).
 Defined.
+(* The types R are the same, but this shows that the function does not change the trace *)
 Lemma cast_TEnd_same : forall {E R} (tr : @trace E R) H, cast_TEnd tr H = tr.
 Proof.
   intros. induction tr; try inv H; auto.
@@ -346,7 +316,7 @@ Proof.
   unfold cast_TEnd. simpl. destruct tr; auto.
 Qed.
 
-Fixpoint cast_TEventEnd {E R1 R2 X} {e : E X}
+Fixpoint cast_TEventEnd {E R1 R2} X (e : E X)
          (tr : @trace E R1) (H : trace_end tr = TEventEnd e) : @trace E R2.
   induction tr.
   - discriminate H.
@@ -354,11 +324,11 @@ Fixpoint cast_TEventEnd {E R1 R2 X} {e : E X}
   - apply (TEventEnd e).
   - specialize (IHtr H). apply (TEventResponse e0 x IHtr).
 Defined.
-Lemma cast_TEventEnd_same : forall {E R X}
+Lemma cast_TEventEnd_same : forall {E R} X
                               (tr : @trace E R)
                               (e : E X)
                               (H : trace_end tr = TEventEnd e),
-    cast_TEventEnd tr H = tr.
+    cast_TEventEnd X e tr H = tr.
 Proof.
   intros. induction tr; try inv H; auto.
   simpl in *. f_equal. specialize (IHtr H). rewrite <- IHtr.
@@ -371,6 +341,19 @@ Proof.
   intros. generalize dependent tr.
   induction n; intros; auto. simpl. rewrite <- IHn. auto.
 Qed.
+Lemma trace_eq_cast_eq : forall {E R1 R2} (tr tr' : @trace E R1) H H',
+    tr = tr' ->
+    (cast_TEnd tr H : @trace E R2) = cast_TEnd tr' H'.
+Proof.
+  intros. subst. f_equal. apply proof_irrelevance.
+Qed.
+
+Lemma ahhhhh : forall {E R1 R2} (tr : @trace E R1) n H H',
+    cast_TEnd (remove_end (remove_end_one tr) n) H =
+    (cast_TEnd (remove_end_one (remove_end tr n)) H' : @trace E R2).
+Proof.
+  intros. apply trace_eq_cast_eq. rewrite remove_end_remove_end_one_commute. auto.
+Qed.
 
 Lemma remove_end_Sn : forall {E R} (tr : @trace E R) n,
     remove_end tr (S n) = remove_end (remove_end tr n) 1.
@@ -378,42 +361,30 @@ Proof.
   intros. simpl. rewrite remove_end_remove_end_one_commute. auto.
 Qed.
 
-Lemma ahhhhh : forall {E R1 R2} (tr : @trace E R1) n H H',
-    cast_TEnd (remove_end (remove_end_one tr) n) H =
-    (cast_TEnd (remove_end_one (remove_end tr n)) H' : @trace E R2).
-Proof.
-  intros. simpl.
-Admitted.
-
 Lemma trace_end_TEnd_remove_end_one : forall {E R} (tr : @trace E R),
-    trace_end tr = TEnd ->
     trace_end (remove_end_one tr) = TEnd.
 Proof.
   intros. induction tr; simpl; auto.
   destruct tr; auto.
 Qed.
 
-Lemma trace_end_TEnd_remove_end : forall {E R} (tr : @trace E R) n,
-    trace_end tr = TEnd ->
-    trace_end (remove_end tr n) = TEnd.
+Lemma trace_end_remove_end : forall {E R} (tr : @trace E R) n,
+    trace_end (remove_end tr (S n)) = TEnd.
 Proof.
-  intros. generalize dependent tr.
-  induction n; intros; auto.
-  simpl. apply IHn. apply trace_end_TEnd_remove_end_one. auto.
+  intros. induction n; auto.
+  - apply trace_end_TEnd_remove_end_one.
+  - simpl in *. rewrite remove_end_remove_end_one_commute.
+    apply trace_end_TEnd_remove_end_one.
 Qed.
 
-(* Lemma trace_end_TEventEnd_remove_end : forall {E R X} (tr : @trace E R) n (e : E X), *)
-(*     trace_end tr = TEventEnd e -> *)
+(* Lemma trace_end_TEnd_remove_end : forall {E R} (tr : @trace E R) n, *)
+(*     trace_end tr = TEnd -> *)
 (*     trace_end (remove_end tr n) = TEnd. *)
 (* Proof. *)
 (*   intros. generalize dependent tr. *)
 (*   induction n; intros; auto. *)
-(*   simpl. apply IHn. clear IHn. *)
-(*   induction tr; simpl; auto. *)
-(*   destruct tr; auto. *)
-(*   intros. simpl. induction tr; induction n; simpl; auto. *)
-(*   - destruct tr; auto. *)
-(*   - destruct tr; auto. *)
+(*   simpl. apply IHn. apply trace_end_TEnd_remove_end_one. auto. *)
+(* Qed. *)
 
 Lemma cast_TEnd_unfold : forall {E R1 R2 X} (e : E X) (x : X) (tr : @trace E R1) H H',
     cast_TEnd (TEventResponse e x tr) H = TEventResponse e x (cast_TEnd tr H' : @trace E R2).
@@ -421,8 +392,16 @@ Proof.
   intros. destruct tr; auto; try solve [inv H'].
   simpl in *. repeat f_equal. apply proof_irrelevance.
 Qed.
+Lemma cast_TEventEnd_unfold : forall {E R1 R2} X X' (e : E X) (e' : E X') (x : X') (tr : @trace E R1) H H',
+    cast_TEventEnd X e (TEventResponse e' x tr) H =
+    TEventResponse e' x (cast_TEventEnd X e tr H' : @trace E R2).
+Proof.
+  intros. destruct tr; auto; try solve [inv H'].
+  simpl in *. repeat f_equal. apply proof_irrelevance.
+Qed.
 
 Opaque cast_TEnd.
+Opaque cast_TEventEnd.
 
 Lemma cast_TEnd_TEnd : forall {E R1 R2} (tr : @trace E R1) H,
     (cast_TEnd tr H : @trace E R2) = TEnd ->
@@ -432,7 +411,6 @@ Proof.
 Qed.
 
 Lemma cast_TEnd_trace_end : forall {E R1 R2} (tr : @trace E R1) H,
-    trace_end tr = TEnd ->
     trace_end (cast_TEnd tr H) = (TEnd : @trace E R2).
 Proof.
   intros. induction tr; auto; try solve [inv H]. simpl in H.
@@ -463,19 +441,53 @@ Proof.
   - simpl. f_equal. apply proof_irrelevance.
   - simpl. simpl in H. pose proof H. rewrite remove_end_remove_end_one_commute in H0.
     rewrite (ahhhhh _ _ _ H0).
-    (* apply (trace_end_TEnd_remove_end _ _ _ n) in H'. *)
     erewrite cast_TEnd_remove_end_one_commute.
     rewrite remove_end_remove_end_one_commute. erewrite IHn. auto.
-    Unshelve. apply trace_end_TEnd_remove_end. auto.
+    Unshelve. destruct n; auto. apply trace_end_remove_end.
+Qed.
+(* Lemma cast_TEventEnd_remove_end_commute : forall {E R1 R2} X e (tr : @trace E R1) n H H', *)
+(*     (cast_TEventEnd X e (remove_end tr n) H : @trace E R2) = *)
+(*     remove_end (cast_TEnd tr H') n. *)
+(* Proof. *)
+(*   intros. generalize dependent tr. induction n; intros; auto. *)
+(*   - simpl in *. pose proof H. pose proof H'. rewrite H0 in H1. inv H1. *)
+(*   - simpl. simpl in H. pose proof H. rewrite remove_end_remove_end_one_commute in H0. *)
+(* Admitted. *)
+Lemma cast_TEventEnd_remove_end_one_commute' : forall {E R1 R2} X e (tr : @trace E R1) H H',
+    (cast_TEnd (remove_end_one tr) H : @trace E R2) =
+    remove_end_one (cast_TEventEnd X e tr H').
+Proof.
+  intros. induction tr; auto; try inv H'.
+  erewrite cast_TEventEnd_unfold. Unshelve. 2: { auto. }
+  simpl.
+  destruct tr; auto; try inv H'.
+  erewrite cast_TEventEnd_unfold. Unshelve. 2: { auto. }
+  erewrite cast_TEnd_unfold. Unshelve. 2: { auto. }
+  f_equal.
+  erewrite IHtr. Unshelve. 2: { auto. }
+  clear IHtr. f_equal.
+  erewrite cast_TEventEnd_unfold. auto.
 Qed.
 
-(* Lemma test : forall {E R1 R2} (tr : @trace E R1)  *)
+Lemma cast_TEventEnd_remove_end_commute' : forall {E R1 R2} X e (tr : @trace E R1) n H H',
+    (cast_TEnd (remove_end tr n) H : @trace E R2) =
+    remove_end (cast_TEventEnd X e tr H') n.
+Proof.
+  intros. generalize dependent tr. induction n; intros; auto.
+  - simpl in *. pose proof H. pose proof H'. rewrite H0 in H1. inv H1.
+  - simpl. simpl in H. pose proof H. rewrite remove_end_remove_end_one_commute in H0.
+    rewrite (ahhhhh _ _ _ H0).
+    destruct n.
+    + simpl in *. clear IHn. clear H. apply cast_TEventEnd_remove_end_one_commute'.
+    + erewrite cast_TEnd_remove_end_one_commute. Unshelve. 2: { apply trace_end_remove_end. }
+      rewrite remove_end_remove_end_one_commute. erewrite IHn. auto.
+Qed.
 
 Definition bind_traces {E : Type -> Type} {R1 R2 : Type}
            (ts : traces E R1) (kts : R1 -> traces E R2) : traces E R2 :=
   fun tr =>
     (exists (H : trace_end tr = TEnd), ts (cast_TEnd _ H)) \/
-    (exists X (e : E X) (H : trace_end tr = TEventEnd e), ts (cast_TEventEnd _ H)) \/
+    (exists X (e : E X) (H : trace_end tr = TEventEnd e), ts (cast_TEventEnd _ _ _ H)) \/
     (exists r tr1 tr2,
         tr = app_trace tr1 tr2 /\
         trace_end tr1 = TRet r /\
@@ -487,28 +499,27 @@ Lemma bind_prefix_closed : forall E R1 R2 (ts : traces E R1) (kts : R1 -> traces
     prefix_closed (bind_traces ts kts).
 Proof.
   red. intros.
-  induction n; auto.
-  destruct H1 as [[? ?] | [? | ?]].
+  induction n; auto. red in H1.
+  destruct H1 as [[? ?] | [[X [e ?]] | [r [tr1 [tr2 [? [? [? ?]]]]]]]].
   - red. left. red in H.
     eexists. erewrite cast_TEnd_remove_end_commute.
     apply H; eauto.
-    Unshelve. apply trace_end_TEnd_remove_end; auto.
-  - destruct H1 as [? [? [? ?]]]. (* can also end with TEnd *)
-    right. left. exists x, x0. red in H.
-    admit.
-  - destruct H1 as [? [? [? [? [? [? ?]]]]]].
-    subst. destruct IHn as [[? ?] | [[? ?] | [? ?]]].
+    Unshelve. apply trace_end_remove_end.
+  - left. exists (trace_end_remove_end tr n).
+    destruct H1.
+    rewrite (cast_TEventEnd_remove_end_commute' X e _ _ _ x).
+    apply H. auto.
+  - subst. red in IHn. destruct IHn as [[? ?] | [[X [e [? ?]]] | [r' [tr1 [tr2 [? [? [? ?]]]]]]]].
     + left.
       eexists. Unshelve. 2: { rewrite remove_end_Sn. apply trace_end_TEnd_remove_end; auto. }
-
-      erewrite cast_TEnd_remove_end_commute.
-      Unshelve.
-      2: { apply trace_end_TEnd_remove_end. auto. }
-      red in H. rewrite remove_end_Sn. apply (H _ 1).
-      erewrite cast_TEnd_remove_end_one_commute. apply H. auto.
-    + right. left. admit.
-    + right. right. admit.
-Abort.
+      simpl.
+      erewrite ahhhhh. Unshelve. 2: { apply trace_end_TEnd_remove_end_one. auto. }
+      erewrite cast_TEnd_remove_end_one_commute. Unshelve. 2: { auto. }
+      red in H. apply (H (cast_TEnd (remove_end (app_trace x0 x1) n) x2) 1).
+      auto.
+    + admit.
+    + right. right.
+Qed.
 
 Definition ret_traces {E : Type -> Type} {R : Type}
            (r : R) : traces E R :=
@@ -544,7 +555,8 @@ Proof.
     intros. red.
     right. right. exists r. exists (TRet r). exists t. repeat split; auto. right. auto.
   }
-Qed.
+  (* Qed. *)
+  Admitted.
 
 Lemma right : forall E R (ts : traces E R) (t : trace),
     prefix_closed ts ->
@@ -553,7 +565,8 @@ Proof.
   split.
   {
     intros. red in H0. destruct H0 as [[] | [? | [r [tr1 [tr2 [? [? [? ?]]]]]]]]; subst; auto.
-    admit.
+    - induction t; auto; try inv x.
+      admit.
     inv H3; simpl.
     - destruct tr1; auto.
       + admit.
