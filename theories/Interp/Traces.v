@@ -404,10 +404,10 @@ Opaque cast_TEnd.
 Opaque cast_TEventEnd.
 
 Lemma cast_TEnd_TEnd : forall {E R1 R2} (tr : @trace E R1) H,
-    (cast_TEnd tr H : @trace E R2) = TEnd ->
+    (cast_TEnd tr H : @trace E R2) = TEnd <->
     tr = TEnd.
 Proof.
-  intros. destruct tr; auto. inv H0.
+  split; intros; destruct tr; auto; inv H0.
 Qed.
 
 Lemma cast_TEnd_trace_end : forall {E R1 R2} (tr : @trace E R1) H,
@@ -445,14 +445,21 @@ Proof.
     rewrite remove_end_remove_end_one_commute. erewrite IHn. auto.
     Unshelve. destruct n; auto. apply trace_end_remove_end.
 Qed.
-(* Lemma cast_TEventEnd_remove_end_commute : forall {E R1 R2} X e (tr : @trace E R1) n H H', *)
-(*     (cast_TEventEnd X e (remove_end tr n) H : @trace E R2) = *)
-(*     remove_end (cast_TEnd tr H') n. *)
-(* Proof. *)
-(*   intros. generalize dependent tr. induction n; intros; auto. *)
-(*   - simpl in *. pose proof H. pose proof H'. rewrite H0 in H1. inv H1. *)
-(*   - simpl. simpl in H. pose proof H. rewrite remove_end_remove_end_one_commute in H0. *)
-(* Admitted. *)
+
+Lemma cast_TEventEnd_TEventEnd : forall {E R1 R2} (tr : @trace E R1) X (e : E X) H,
+    (cast_TEventEnd X e tr H : @trace E R2) = TEventEnd e <->
+    tr = TEventEnd e.
+Proof.
+  split; intros; destruct tr; auto; inv H0.
+Qed.
+
+Lemma cast_TEventEnd_trace_end : forall {E R1 R2} (tr : @trace E R1) X (e : E X) H,
+    trace_end (cast_TEventEnd X e tr H) = (TEventEnd e : @trace E R2).
+Proof.
+  intros. induction tr; auto; try solve [inv H]. simpl in H.
+  rewrite (cast_TEventEnd_unfold _ _ _ _ _ _ _ H). simpl. apply IHtr; auto.
+Qed.
+
 Lemma cast_TEventEnd_remove_end_one_commute' : forall {E R1 R2} X e (tr : @trace E R1) H H',
     (cast_TEnd (remove_end_one tr) H : @trace E R2) =
     remove_end_one (cast_TEventEnd X e tr H').
@@ -483,6 +490,7 @@ Proof.
       rewrite remove_end_remove_end_one_commute. erewrite IHn. auto.
 Qed.
 
+(* TODO look at app_trace discarding empty end cases *)
 Definition bind_traces {E : Type -> Type} {R1 R2 : Type}
            (ts : traces E R1) (kts : R1 -> traces E R2) : traces E R2 :=
   fun tr =>
@@ -509,17 +517,17 @@ Proof.
     destruct H1.
     rewrite (cast_TEventEnd_remove_end_commute' X e _ _ _ x).
     apply H. auto.
-  - subst. red in IHn. destruct IHn as [[? ?] | [[X [e [? ?]]] | [r' [tr1 [tr2 [? [? [? ?]]]]]]]].
-    + left.
-      eexists. Unshelve. 2: { rewrite remove_end_Sn. apply trace_end_TEnd_remove_end; auto. }
-      simpl.
-      erewrite ahhhhh. Unshelve. 2: { apply trace_end_TEnd_remove_end_one. auto. }
+  - subst. red in IHn. destruct IHn as [[? ?] | [[X [e [? ?]]] | [r' [tr1' [tr2' [? [? [? ?]]]]]]]].
+    + left. exists (trace_end_remove_end _ _).
+      simpl. erewrite ahhhhh. Unshelve. 2: { apply trace_end_TEnd_remove_end_one. }
       erewrite cast_TEnd_remove_end_one_commute. Unshelve. 2: { auto. }
-      red in H. apply (H (cast_TEnd (remove_end (app_trace x0 x1) n) x2) 1).
-      auto.
+      red in H. apply (H _ 1). auto.
+    + left. exists (trace_end_remove_end _ _).
+      simpl. erewrite ahhhhh. Unshelve. 2: { apply trace_end_TEnd_remove_end_one. }
+      erewrite cast_TEventEnd_remove_end_one_commute'. Unshelve. all: auto.
+      red in H. apply (H _ 1). auto.
     + admit.
-    + right. right.
-Qed.
+Abort.
 
 Definition ret_traces {E : Type -> Type} {R : Type}
            (r : R) : traces E R :=
@@ -543,56 +551,61 @@ Proof.
   {
     intros. red in H1.
     destruct H1 as [[? ?] | [? | [? [? [? [? [? [? ?]]]]]]]]; subst.
-    - induction t; try inv x; auto. inv H1; auto.
-      + simpl in *. inv H2.
-    - destruct H1 as [? [? [? [? ?]]]].
-      inv H2.
-      + destruct t; inv H3. auto.
-      + destruct t; inv H3. inv H1.
+    - inv H1.
+      + rewrite cast_TEnd_TEnd in H2. subst. auto.
+      + pose proof (@cast_TEnd_trace_end _ _ R1 t x). rewrite H2 in H1.
+        inv H1.
+    - destruct H1 as [? [? [? ?]]].
+      inv H1; pose proof (@cast_TEventEnd_trace_end _ _ R1 t _ _ x1); rewrite H2 in H1; inv H1.
     - inv H3; inv H2. auto.
   }
   {
     intros. red.
     right. right. exists r. exists (TRet r). exists t. repeat split; auto. right. auto.
   }
-  (* Qed. *)
-  Admitted.
+Qed.
 
+(* note only 1 R *)
 Lemma right : forall E R (ts : traces E R) (t : trace),
     prefix_closed ts ->
     bind_traces ts ret_traces t <-> ts t.
 Proof.
   split.
   {
-    intros. red in H0. destruct H0 as [[] | [? | [r [tr1 [tr2 [? [? [? ?]]]]]]]]; subst; auto.
-    - induction t; auto; try inv x.
-      admit.
-    inv H3; simpl.
-    - destruct tr1; auto.
-      + admit.
-      + admit.
-      + destruct (test' X e x tr1).
-        * rewrite H0. auto.
-        * rewrite H0. admit.
-    - rewrite app_trace_TRet; auto.
+    intros. red in H0.
+    destruct H0 as [[] | [[X [e [? ?]]] | [r [tr1 [tr2 [? [? [? ?]]]]]]]]; subst; auto.
+    - rewrite cast_TEnd_same in H0. auto.
+    - rewrite cast_TEventEnd_same in H0. auto.
+    - inv H3.
+      + destruct tr1; simpl; try solve [apply prefix_closed_TEnd; eauto].
+        destruct (app_TEnd _ e x tr1); simpl in *; rewrite H0; auto.
+        apply (H _ 1 H2).
+      + rewrite app_trace_TRet; auto.
   }
   {
-    intros. red.
-    induction t; auto.
+    intros. red. remember (trace_len t). generalize dependent t.
+    induction n; intros; destruct t; inv Heqn.
+    - left. exists eq_refl. auto.
     - right. right. exists r. exists (TRet r). exists (TRet r). repeat split; auto. right. auto.
-    - right. left. admit.
-    - right. right. exists r. exists (TRet r). exists (TRet r). repeat split; auto. right. auto.
+    - right. left. exists X, e, eq_refl. auto.
+    - right. right. (* need lemma for cases of traces : different endings *) admit.
   }
-Qed.
+Abort.
 
 Lemma assoc : forall E R1 R2 R3 (ts : traces E R1) (f : R1 -> traces E R2) (g : R2 -> traces E R3) t,
     bind_traces (bind_traces ts f) g t <-> bind_traces ts (fun x => bind_traces (f x) g) t.
 Proof.
-  split.
+  split; intros.
   {
-    intros.
+    red in H. destruct H as [? | [? | ?]].
+    - left. destruct H. exists x. destruct H.
+      + destruct H. admit.
+      + admit.
+    - right. left. admit.
+    - right. right. admit.
   }
   {
-
+    red in H. destruct H as [? | [? | ?]].
+    - left. admit.
   }
 Qed.
