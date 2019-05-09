@@ -217,18 +217,41 @@ Fixpoint trace_end {E R} (tr : @trace E R) : trace :=
   | _ => tr
   end.
 
-Lemma trace_end_app_trace_TEnd : forall {E R1 R2} (tr : @trace E R1),
-    trace_end (app_trace tr TEnd : @trace E R2) = TEnd.
-Proof.
-  intros. induction tr; auto.
-Qed.
+(* Lemma trace_end_app_trace_TEnd : forall {E R1 R2} (tr : @trace E R1), *)
+(*     trace_end (app_trace tr TEnd : @trace E R2) = TEnd. *)
+(* Proof. *)
+(*   intros. induction tr; auto. *)
+(* Qed. *)
 
 Lemma app_trace_TRet : forall {E R} (tr : @trace E R) (r : R),
-    trace_end tr = (TRet r) ->
+    trace_end tr = TRet r ->
     app_trace tr (TRet r) = tr.
 Proof.
   intros. induction tr; auto.
   simpl. f_equal. apply IHtr. inv H. auto.
+Qed.
+
+Lemma trace_end_cases : forall {E R} (tr : @trace E R),
+    trace_end tr = TEnd \/
+    (exists r, trace_end tr = TRet r) \/
+    (exists X (e : E X), trace_end tr = TEventEnd e).
+Proof.
+  intros. induction tr; auto.
+  - right. left. exists r. auto.
+  - right. right. exists X, e. auto.
+Qed.
+
+Lemma app_trace_assoc :
+  forall {E R1 R2 R3} (tr1 : @trace E R1) (tr2 : @trace E R2) (tr3 : @trace E R3),
+    app_trace (app_trace tr1 tr2) tr3 = app_trace tr1 (app_trace tr2 tr3).
+Proof.
+  induction tr1; auto. intros. simpl. rewrite IHtr1. auto.
+Qed.
+
+Lemma trace_end_app_trace : forall {E R1 R2} (tr1 : @trace E R1) (tr2 : @trace E R2) t,
+    trace_end (app_trace tr1 tr2) = t <-> trace_end tr2 = t.
+Proof.
+  split; intros; induction tr1; auto.
 Qed.
 
 (** remove_end **)
@@ -265,15 +288,6 @@ Proof.
   intros. induction tr; simpl; auto.
   destruct tr; auto.
 Qed.
-
-(* Lemma trace_end_remove_end : forall {E R} (tr : @trace E R) n, *)
-(*     trace_end (remove_end tr (S n)) = TEnd. *)
-(* Proof. *)
-(*   intros. induction n; auto. *)
-(*   - apply trace_end_TEnd_remove_end_one. *)
-(*   - simpl in *. rewrite remove_end_remove_end_one_commute. *)
-(*     apply trace_end_TEnd_remove_end_one. *)
-(* Qed. *)
 
 Lemma remove_end_one_app_trace_commute :
   forall {E R1 R2} X (tr1 : @trace E R1) (tr2 : @trace E R2) (e : E X) (x : X),
@@ -435,17 +449,112 @@ Qed.
 Opaque cast_TEnd.
 Opaque cast_TEventEnd.
 
+Lemma cast_TEnd_idempotent : forall {E R1 R2 R3} (tr : @trace E R1) H H' H'',
+    (cast_TEnd (cast_TEnd tr H : @trace E R2) H' : @trace E R3) =
+    cast_TEnd tr H''.
+Proof.
+  intros. induction tr; try inv H; auto.
+  assert (exists H, trace_end (cast_TEnd tr H : @trace E R2) = TEnd).
+  { eexists. erewrite cast_TEnd_unfold in H'. eauto. }
+  destruct H0. Unshelve. 2: auto.
+  erewrite cast_TEnd_unfold. Unshelve. 2: auto.
+  erewrite <- IHtr. Unshelve. all: auto.
+  erewrite <- cast_TEnd_unfold. Unshelve. 2: auto.
+  apply trace_eq_cast_TEnd_eq; eauto.
+  erewrite <- cast_TEnd_unfold. Unshelve. 2: auto.
+  apply trace_eq_cast_TEnd_eq; eauto.
+Qed.
+Lemma cast_TEventEnd_idempotent :
+  forall {E R1 R2 R3} X1 X2 (tr : @trace E R1) (e1 : E X1) (e2 : E X2) H H' H'',
+    (cast_TEventEnd X1 e1 (cast_TEventEnd X2 e2 tr H : @trace E R2) H' : @trace E R3) =
+    cast_TEventEnd X1 e1 tr H''.
+Proof.
+  intros. induction tr; try inv H; auto.
+  assert (exists H, trace_end (cast_TEventEnd X2 e2 tr H : @trace E R2) = TEventEnd e1).
+  { eexists. erewrite cast_TEventEnd_unfold in H'. eauto. }
+  destruct H0. Unshelve. 2: auto.
+  erewrite cast_TEventEnd_unfold. Unshelve. 2: auto.
+  erewrite <- IHtr. Unshelve. all: auto.
+  erewrite <- cast_TEventEnd_unfold. Unshelve. 2: auto.
+  apply trace_eq_cast_TEventEnd_eq; eauto.
+  erewrite <- cast_TEventEnd_unfold. Unshelve. 2: auto.
+  apply trace_eq_cast_TEventEnd_eq; eauto.
+Qed.
+
 Lemma cast_TEnd_TEnd : forall {E R1 R2} (tr : @trace E R1) H,
-    (cast_TEnd tr H : @trace E R2) = TEnd <->
+    (cast_TEnd tr H : @trace E R2) = TEnd ->
     tr = TEnd.
 Proof.
-  split; intros; destruct tr; auto; inv H0.
+  intros; destruct tr; auto; inv H0.
 Qed.
 Lemma cast_TEventEnd_TEventEnd : forall {E R1 R2} (tr : @trace E R1) X (e : E X) H,
-    (cast_TEventEnd X e tr H : @trace E R2) = TEventEnd e <->
+    (cast_TEventEnd X e tr H : @trace E R2) = TEventEnd e ->
     tr = TEventEnd e.
 Proof.
-  split; intros; destruct tr; auto; inv H0.
+  intros; destruct tr; auto; inv H0.
+Qed.
+
+Lemma cast_TEnd_direction : forall {E R1 R2} (tr1 : @trace E R1) (tr2 : @trace E R2) H H',
+    cast_TEnd tr1 H = tr2 <->
+    tr1 = cast_TEnd tr2 H'.
+Proof.
+  split; intros.
+  {
+    generalize dependent tr1. induction tr2; intros; try inv H'; auto; simpl in *.
+    - apply cast_TEnd_TEnd in H0; eauto.
+    - erewrite cast_TEnd_unfold. Unshelve. 2: auto.
+      destruct tr1; try inv H; try solve [inv H0].
+      erewrite cast_TEnd_unfold in H0. inv H0. auto_inj_pair2. subst.
+      f_equal. eapply IHtr2; eauto. Unshelve. auto.
+  }
+  {
+    generalize dependent tr2. induction tr1; intros; try inv H; auto.
+    - symmetry in H0. apply cast_TEnd_TEnd in H0; eauto.
+    - erewrite cast_TEnd_unfold. Unshelve. 2: auto.
+      destruct tr2; try inv H'; try solve [inv H0].
+      erewrite cast_TEnd_unfold in H0. inv H0. auto_inj_pair2. subst.
+      f_equal. eapply IHtr1; eauto. Unshelve. auto.
+  }
+Qed.
+Lemma cast_TEventEnd_direction :
+  forall {E R1 R2} X (e : E X) (tr1 : @trace E R1) (tr2 : @trace E R2) H H',
+    cast_TEventEnd X e tr1 H = tr2 <->
+    tr1 = cast_TEventEnd X e tr2 H'.
+Proof.
+  split; intros.
+  {
+    generalize dependent tr1. induction tr2; intros; try inv H'; auto; simpl in *.
+    - pose proof H'. inv H1. auto_inj_pair2. subst.
+      apply cast_TEventEnd_TEventEnd in H0; eauto.
+    - erewrite cast_TEventEnd_unfold. Unshelve. 2: auto.
+      destruct tr1; try inv H; try solve [inv H0].
+      erewrite cast_TEventEnd_unfold in H0. inv H0. auto_inj_pair2. subst.
+      f_equal. eapply IHtr2; eauto. Unshelve. auto.
+  }
+  {
+    generalize dependent tr2. induction tr1; intros; try inv H; auto.
+    - pose proof H. inv H1. auto_inj_pair2. subst.
+      symmetry in H0. apply cast_TEventEnd_TEventEnd in H0; eauto.
+    - erewrite cast_TEventEnd_unfold. Unshelve. 2: auto.
+      destruct tr2; try inv H'; try solve [inv H0].
+      erewrite cast_TEventEnd_unfold in H0. inv H0. auto_inj_pair2. subst.
+      f_equal. eapply IHtr1; eauto. Unshelve. auto.
+  }
+Qed.
+
+Lemma cast_TEnd_app_trace : forall {E R1 R2 R3} (tr1 : @trace E R1) (tr2 : @trace E R2) H H',
+    (cast_TEnd (app_trace tr1 tr2) H : @trace E R3) = app_trace tr1 (cast_TEnd tr2 H').
+Proof.
+  intros. induction tr1; simpl in *; try apply trace_eq_cast_TEnd_eq; auto.
+  erewrite cast_TEnd_unfold. Unshelve. 2: auto. rewrite IHtr1. auto.
+Qed.
+Lemma cast_TEventEnd_app_trace :
+  forall {E R1 R2 R3} X (e : E X) (tr1 : @trace E R1) (tr2 : @trace E R2) H H',
+    (cast_TEventEnd X e (app_trace tr1 tr2) H : @trace E R3) =
+    app_trace tr1 (cast_TEventEnd X e tr2 H').
+Proof.
+  intros. induction tr1; simpl in *; try apply trace_eq_cast_TEventEnd_eq; auto.
+  erewrite cast_TEventEnd_unfold. Unshelve. 2: auto. rewrite IHtr1. auto.
 Qed.
 
 Lemma cast_TEnd_trace_end : forall {E R1 R2} (tr : @trace E R1) H,
@@ -463,7 +572,7 @@ Proof.
   erewrite cast_TEnd_unfold. Unshelve. 2: { auto. }
   simpl.
   destruct tr; auto; try inv H'.
-  erewrite cast_TEnd_unfold. Unshelve. 2: { auto. }
+   erewrite cast_TEnd_unfold. Unshelve. 2: { auto. }
   erewrite cast_TEnd_unfold. Unshelve. 2: { auto. }
   f_equal.
   erewrite IHtr. Unshelve. 2: { auto. }
@@ -625,10 +734,10 @@ Proof.
       red in H. apply (H _ 1). auto.
     + simpl. rewrite remove_end_remove_end_one_commute.
       rewrite H1. clear H1.
-      induction tr2'; simpl in *.
+      destruct tr2'; simpl in *.
       * left. eexists. Unshelve. 2: { apply trace_end_remove_end_one; auto. }
         erewrite cast_TEnd_remove_end_one_commute.
-        Unshelve. 2: { apply trace_end_app_trace_TEnd. }
+        Unshelve. 2: { rewrite trace_end_app_trace. auto. }
         apply (H _ 1). edestruct (@app_trace_TEnd'' E R1 R2 tr1'); rewrite H1; auto.
         apply (H _ 1). auto.
       * left. eexists. Unshelve. 2: { apply trace_end_remove_end_one; auto. }
@@ -665,9 +774,8 @@ Proof.
     intros. red in H1.
     destruct H1 as [[? ?] | [? | [? [? [? [? [? [? ?]]]]]]]]; subst.
     - inv H1.
-      + rewrite cast_TEnd_TEnd in H2. subst. auto.
-      + pose proof (@cast_TEnd_trace_end _ _ R1 t x). rewrite H2 in H1.
-        inv H1.
+      + apply cast_TEnd_TEnd in H2. subst. auto.
+      + pose proof (@cast_TEnd_trace_end _ _ R1 t x). rewrite H2 in H1. inv H1.
     - destruct H1 as [? [? [? ?]]].
       inv H1; pose proof (@cast_TEventEnd_trace_end _ _ R1 t _ _ x1); rewrite H2 in H1; inv H1.
     - inv H3; inv H2. auto.
@@ -690,35 +798,93 @@ Proof.
     - rewrite cast_TEnd_same in H0. auto.
     - rewrite cast_TEventEnd_same in H0. auto.
     - inv H3.
-      + destruct tr1; simpl; try solve [apply prefix_closed_TEnd; eauto].
-        destruct (app_trace_TEnd _ e x tr1); simpl in *; rewrite H0; auto.
-        apply (H _ 1 H2).
+      + destruct tr1; try solve [apply prefix_closed_TEnd; eauto]; auto.
+        destruct (app_trace_TEnd tr1); simpl in *; rewrite H0; auto.
+        specialize (H _ 1 H2). simpl in H.
+        destruct tr1; inv H1; auto.
       + rewrite app_trace_TRet; auto.
   }
   {
-    intros. red. remember (trace_len t). generalize dependent t.
-    induction n; intros; destruct t; inv Heqn.
+    intros. red.
+    destruct t.
     - left. exists eq_refl. auto.
-    - right. right. exists r. exists (TRet r). exists (TRet r). repeat split; auto. right. auto.
+    - right. right. exists r, (TRet r), (TRet r). repeat split; auto. right. auto.
     - right. left. exists X, e, eq_refl. auto.
-    - right. right. (* need lemma for cases of traces : different endings *) admit.
+    - destruct (trace_end_cases t) as [? | [[r ?] | [X' [e' ?]]]]; auto.
+      + left. eexists. Unshelve. 2: { auto. }
+        rewrite cast_TEnd_same. auto.
+      + right. right.
+        exists r, (TEventResponse e x t), (TRet r). repeat split; auto.
+        rewrite app_trace_TRet; auto.
+        right. auto.
+      + right. left. exists X', e'. eexists. Unshelve. 2: { auto. }
+        rewrite cast_TEventEnd_same. auto.
   }
-Abort.
+Qed.
 
 Lemma assoc : forall E R1 R2 R3 (ts : traces E R1) (f : R1 -> traces E R2) (g : R2 -> traces E R3) t,
     bind_traces (bind_traces ts f) g t <-> bind_traces ts (fun x => bind_traces (f x) g) t.
 Proof.
   split; intros.
   {
-    red in H. destruct H as [? | [? | ?]].
-    - left. destruct H. exists x. destruct H.
-      + destruct H. admit.
-      + admit.
-    - right. left. admit.
-    - right. right. admit.
+    red in H. destruct H as [[? ?] | [[X [e [? ?]]] | [r [tr1 [tr2 [? [? [? ?]]]]]]]].
+    - destruct H as [[? ?] | [[X [e [? ?]]] | [r [tr1 [tr2 [? [? [? ?]]]]]]]].
+      + left. exists x. erewrite cast_TEnd_idempotent in H. Unshelve. 2: auto. auto.
+      + clear H. rewrite cast_TEnd_trace_end in x0. inv x0.
+      + right. right. assert (trace_end tr2 = TEnd).
+        {
+          pose proof (@cast_TEnd_trace_end E R3 R2 t x). rewrite H in H3.
+          erewrite <- trace_end_app_trace; eauto.
+        }
+        exists r, tr1, (cast_TEnd tr2 H3). repeat split; auto.
+        * erewrite cast_TEnd_direction in H. erewrite <- cast_TEnd_app_trace; eauto.
+          Unshelve. rewrite trace_end_app_trace. auto.
+        * left. eexists. Unshelve. all: auto. 2: { apply cast_TEnd_trace_end. }
+          erewrite cast_TEnd_idempotent. Unshelve. 2: auto.
+          rewrite cast_TEnd_same. auto.
+    - destruct H as [[? ?] | [[X' [e' [? ?]]] | [r [tr1 [tr2 [? [? [? ?]]]]]]]].
+      + clear H. rewrite cast_TEventEnd_trace_end in x0. inv x0.
+      + pose proof (@cast_TEventEnd_trace_end E R3 R2 _ _ _ x). rewrite x0 in H0.
+        inv H0. auto_inj_pair2. subst.
+        right. left. exists X, e, x. erewrite cast_TEventEnd_idempotent in H.
+        Unshelve. 2: auto. auto.
+      + right. right. assert (trace_end tr2 = TEventEnd e).
+        {
+          pose proof (@cast_TEventEnd_trace_end E R3 R2 t _ _ x).
+          rewrite H in H3. erewrite <- trace_end_app_trace; eauto.
+        }
+        exists r, tr1, (cast_TEventEnd X e tr2 H3). repeat split; auto.
+        * erewrite cast_TEventEnd_direction in H. erewrite <- cast_TEventEnd_app_trace; eauto.
+          Unshelve. rewrite trace_end_app_trace. auto.
+        * right. left. exists X, e. eexists. Unshelve. 2: { apply cast_TEventEnd_trace_end. }
+          erewrite cast_TEventEnd_idempotent. Unshelve. 2: auto.
+          rewrite cast_TEventEnd_same. auto.
+    - destruct H1 as [[? ?] | [[X [e [? ?]]] | [r' [tr1' [tr2' [? [? [? ?]]]]]]]].
+      + rewrite x in H0. inv H0.
+      + rewrite x in H0. inv H0.
+      + right. right. exists r', tr1', (app_trace tr2' tr2). repeat split; auto.
+        * rewrite H. rewrite H1. apply app_trace_assoc.
+        * right. right. exists r, tr2', tr2. repeat split; auto.
+          erewrite <- trace_end_app_trace. rewrite H1 in H0. apply H0.
   }
   {
-    red in H. destruct H as [? | [? | ?]].
-    - left. admit.
+    red in H. destruct H as [[? ?] | [[X [e [? ?]]] | [r [tr1 [tr2 [? [? [? ?]]]]]]]].
+    - left. exists x. left. eexists. Unshelve. 2: { apply cast_TEnd_trace_end. }
+      erewrite cast_TEnd_idempotent; eauto.
+    - right. left. exists X, e, x. right. left. exists X, e. eexists.
+      Unshelve. 2: { apply cast_TEventEnd_trace_end. }
+      erewrite cast_TEventEnd_idempotent; eauto.
+    - destruct H2 as [[? ?] | [[X [e [? ?]]] | [r' [tr1' [tr2' [? [? [? ?]]]]]]]].
+      + left. eexists. Unshelve. 2: { rewrite H. rewrite trace_end_app_trace. auto. }
+        right. right. exists r, tr1, (cast_TEnd tr2 x). repeat split; auto.
+        rewrite H. erewrite cast_TEnd_app_trace; eauto.
+      + right. left. exists X, e. eexists.
+        Unshelve. 2: { rewrite H. rewrite trace_end_app_trace. auto. }
+        right. right. exists r, tr1, (cast_TEventEnd _ _ tr2 x). repeat split; auto.
+        rewrite H. erewrite cast_TEventEnd_app_trace; eauto.
+      + right. right. exists r', (app_trace tr1 tr1'), tr2'. repeat split; auto.
+        * rewrite H. rewrite H2. symmetry. apply app_trace_assoc.
+        * apply trace_end_app_trace. auto.
+        * right. right. exists r, tr1, tr1'. repeat split; auto.
   }
 Qed.
